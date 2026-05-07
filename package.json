@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "A git-like encrypted .env handoff tool with monorepo support.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/jobairalsarkar1/envkeyring.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jobairalsarkar1/envkeyring/issues"
+  },
+  "homepage": "https://github.com/jobairalsarkar1/envkeyring#readme",
   "bin": {
     "envkeyring": "./dist/cli.js",
     "ekr": "./dist/cli.js"
@@ -14,7 +22,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node test/smoke.mjs"
+    "test": "npm run build && node test/smoke.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check && npm test"
   },
   "engines": {
     "node": ">=20"
