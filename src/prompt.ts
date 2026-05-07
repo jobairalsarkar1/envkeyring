@@ -14,6 +14,8 @@ export async function askSecret(label: string): Promise<string> {
 
     readline.emitKeypressEvents(input);
     const wasRaw = input.isRaw;
+    const refableInput = input as typeof input & { ref?: () => void };
+    refableInput.ref?.();
     input.resume();
     input.setRawMode(true);
     output.write(label);

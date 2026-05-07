@@ -48,6 +48,12 @@ Seal the env files:
 npx envkeyring seal
 ```
 
+For a guided checklist of discovered env files:
+
+```bash
+npx envkeyring seal --interactive
+```
+
 This creates a project vault and matching examples:
 
 ```txt
@@ -126,6 +132,8 @@ npx envkeyring seal [path]
 ```
 
 Reads discovered `.env` files, writes matching `.env.example` files, and encrypts the real values into `.envkeyring/vault.enc.json`.
+
+Add `--interactive` to choose discovered env files from a terminal checklist.
 
 ```bash
 npx envkeyring verify

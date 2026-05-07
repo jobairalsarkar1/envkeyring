@@ -9,10 +9,12 @@ import { askSecret } from "./prompt.js";
 import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, vaultPath } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
+import { chooseEnvFiles } from "./interactive-seal.js";
 import type { VaultEnvelope, VaultPayload } from "./types.js";
 
 type CliOptions = {
   force: boolean;
+  interactive: boolean;
   scope?: string;
 };
 
@@ -41,10 +43,12 @@ async function main(cmd: string, args: string[]): Promise<void> {
 }
 
 function parseOptions(args: string[]): CliOptions {
-  const options: CliOptions = { force: false };
+  const options: CliOptions = { force: false, interactive: false };
   for (const arg of args) {
     if (arg === "--force" || arg === "-f") {
       options.force = true;
+    } else if (arg === "--interactive" || arg === "-i") {
+      options.interactive = true;
     } else if (!options.scope) {
       options.scope = arg;
     } else {
@@ -104,10 +108,16 @@ async function commandSeal(options: CliOptions): Promise<void> {
     throw new Error("No .env files found to seal.");
   }
 
+  const selectedEnvFiles = options.interactive ? await chooseEnvFiles(root, envFiles) : envFiles;
+  if (selectedEnvFiles.length === 0) {
+    warn("No env files selected.");
+    return;
+  }
+
   const passphrase = await readNewPassphrase();
   const files = [];
 
-  for (const filePath of envFiles) {
+  for (const filePath of selectedEnvFiles) {
     const entries = await readEnvFile(filePath);
     if (entries.length === 0) continue;
 
@@ -260,7 +270,7 @@ function printHelp(): void {
 Usage:
   envkeyring init
   envkeyring status [path]
-  envkeyring seal [path]
+  envkeyring seal [path] [--interactive]
   envkeyring unlock [path] [--force]
   envkeyring verify
   envkeyring list [path]
