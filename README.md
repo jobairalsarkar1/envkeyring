@@ -26,6 +26,7 @@ apps/api/.env.example
 A teammate can then run:
 
 ```bash
+npx envkeyring verify
 npx envkeyring unlock
 ```
 

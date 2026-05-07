@@ -31,6 +31,7 @@ async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "status") return commandStatus(parseOptions(args));
   if (cmd === "seal") return commandSeal(parseOptions(args));
   if (cmd === "unlock") return commandUnlock(parseOptions(args));
+  if (cmd === "verify") return commandVerify();
   if (cmd === "rotate-key") return commandRotateKey();
   if (cmd === "doctor") return commandDoctor(parseOptions(args));
 
@@ -158,6 +159,18 @@ async function commandUnlock(options: CliOptions): Promise<void> {
   console.log(`Unlocked ${written} env file${written === 1 ? "" : "s"}.`);
 }
 
+async function commandVerify(): Promise<void> {
+  const root = await requireRoot();
+  const vault = await readVault(root);
+  const passphrase = await askSecret("Unlock key: ");
+  const payload = decryptVault(vault, passphrase);
+
+  console.log(`Unlock key verified for ${payload.files.length} sealed env file${payload.files.length === 1 ? "" : "s"}.`);
+  for (const file of payload.files) {
+    console.log(`  ${file.path}`);
+  }
+}
+
 async function commandRotateKey(): Promise<void> {
   const root = await requireRoot();
   const vault = await readVault(root);
@@ -227,6 +240,7 @@ Usage:
   envkeyring status [path]
   envkeyring seal [path]
   envkeyring unlock [path] [--force]
+  envkeyring verify
   envkeyring rotate-key
   envkeyring doctor [path]
 
@@ -238,6 +252,7 @@ Commands:
   status    Show vault and env file state
   seal      Encrypt discovered .env files and generate .env.example files
   unlock    Restore .env files from the encrypted vault
+  verify    Check an unlock key without writing .env files
   rotate-key
             Re-encrypt the vault with a new unlock key
   doctor    Compare env usage in code with checked-in examples

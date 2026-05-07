@@ -47,6 +47,10 @@ fs.rmSync(path.join(root, "apps/web/.env"));
 fs.rmSync(path.join(root, "apps/api/.env"));
 
 run(["rotate-key"], "supersecret\nnewsecret\nnewsecret\n");
+const verify = run(["verify"], "newsecret\n");
+assert.match(verify.stdout, /Unlock key verified for 2 sealed env files/);
+assert.match(verify.stdout, /apps\/api\/\.env/);
+
 run(["unlock"], "newsecret\n");
 
 assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /WEB_SECRET=web-value/);
