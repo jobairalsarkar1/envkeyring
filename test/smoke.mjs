@@ -29,11 +29,19 @@ fs.writeFileSync(path.join(root, "apps/api/.env"), "DATABASE_URL=postgres://loca
 fs.writeFileSync(path.join(root, "apps/api/server.ts"), "console.log(process.env.DATABASE_URL, process.env.MISSING_FROM_EXAMPLE);\n");
 
 run(["init"]);
+const beforeSealStatus = run(["status"]);
+assert.match(beforeSealStatus.stdout, /Initialized: yes/);
+assert.match(beforeSealStatus.stdout, /missing example/);
+
 run(["seal"], "supersecret\nsupersecret\n");
 
 assert.ok(fs.existsSync(path.join(root, ".envkeyring/vault.enc.json")));
 assert.equal(fs.readFileSync(path.join(root, "apps/web/.env.example"), "utf8"), "PUBLIC_URL=<encrypted>\nWEB_SECRET=<encrypted>\n");
 assert.equal(fs.readFileSync(path.join(root, "apps/api/.env.example"), "utf8"), "DATABASE_URL=<encrypted>\nJWT_SECRET=<encrypted>\n");
+
+const afterSealStatus = run(["status"]);
+assert.match(afterSealStatus.stdout, /Vault: \.envkeyring\/vault\.enc\.json/);
+assert.match(afterSealStatus.stdout, /example ok/);
 
 fs.rmSync(path.join(root, "apps/web/.env"));
 fs.rmSync(path.join(root, "apps/api/.env"));

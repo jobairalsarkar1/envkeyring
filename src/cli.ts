@@ -4,7 +4,7 @@ import path from "node:path";
 import { TOOL_DIR, TOOL_NAME } from "./constants.js";
 import { decryptVault, encryptVault } from "./crypto.js";
 import { runDoctor } from "./doctor.js";
-import { readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
+import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
 import { askSecret } from "./prompt.js";
 import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, vaultPath } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
@@ -28,6 +28,7 @@ try {
 async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "help" || cmd === "--help" || cmd === "-h") return printHelp();
   if (cmd === "init") return commandInit();
+  if (cmd === "status") return commandStatus(parseOptions(args));
   if (cmd === "seal") return commandSeal(parseOptions(args));
   if (cmd === "unlock") return commandUnlock(parseOptions(args));
   if (cmd === "doctor") return commandDoctor(parseOptions(args));
@@ -58,6 +59,36 @@ async function commandInit(): Promise<void> {
     console.log(`Initialized ${TOOL_NAME} at ${relative}`);
   } else {
     console.log(`${TOOL_NAME} is already initialized at ${relative}`);
+  }
+}
+
+async function commandStatus(options: CliOptions): Promise<void> {
+  const root = await findRepoRoot();
+  if (!root) {
+    console.log(`${TOOL_NAME} status`);
+    console.log("Initialized: no");
+    console.log(`Run "envkeyring init" to create ${TOOL_DIR}/.`);
+    return;
+  }
+
+  const envFiles = await discoverEnvFiles(root, options.scope);
+  const vaultExists = await exists(vaultPath(root));
+
+  console.log(`${TOOL_NAME} status`);
+  console.log(`Root: ${path.relative(process.cwd(), root) || "."}`);
+  console.log("Initialized: yes");
+  console.log(`Vault: ${vaultExists ? path.relative(process.cwd(), vaultPath(root)) : "missing"}`);
+  console.log(`Env files: ${envFiles.length}`);
+
+  if (envFiles.length === 0) {
+    console.log("  none");
+    return;
+  }
+
+  for (const filePath of envFiles) {
+    const relativePath = toPosixPath(path.relative(root, filePath));
+    const exampleExists = await exists(examplePathFor(filePath));
+    console.log(`  ${relativePath} (${exampleExists ? "example ok" : "missing example"})`);
   }
 }
 
@@ -181,6 +212,7 @@ function printHelp(): void {
 
 Usage:
   envkeyring init
+  envkeyring status [path]
   envkeyring seal [path]
   envkeyring unlock [path] [--force]
   envkeyring doctor [path]
@@ -190,6 +222,7 @@ Aliases:
 
 Commands:
   init      Create a project-local .envkeyring folder
+  status    Show vault and env file state
   seal      Encrypt discovered .env files and generate .env.example files
   unlock    Restore .env files from the encrypted vault
   doctor    Compare env usage in code with checked-in examples

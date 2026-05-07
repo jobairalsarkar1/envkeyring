@@ -9,6 +9,7 @@ Admins keep the real `.env` values locally, seal them into an encrypted project 
 ```bash
 npm install -D envkeyring
 npx envkeyring init
+npx envkeyring status
 npx envkeyring seal
 ```
 
@@ -39,6 +40,7 @@ npx envkeyring unlock --force
 Run commands from anywhere inside the repo. `envkeyring` walks upward until it finds `.envkeyring/`, then keeps all env file paths relative to that root.
 
 ```bash
+npx envkeyring status apps/api
 npx envkeyring seal apps/api
 npx envkeyring unlock apps/web
 npx envkeyring doctor packages/worker
