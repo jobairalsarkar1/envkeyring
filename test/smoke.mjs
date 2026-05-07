@@ -51,6 +51,12 @@ const verify = run(["verify"], "newsecret\n");
 assert.match(verify.stdout, /Unlock key verified for 2 sealed env files/);
 assert.match(verify.stdout, /apps\/api\/\.env/);
 
+const list = run(["list", "apps/api"], "newsecret\n");
+assert.match(list.stdout, /Vault contains 1 sealed env file/);
+assert.match(list.stdout, /DATABASE_URL/);
+assert.match(list.stdout, /JWT_SECRET/);
+assert.doesNotMatch(list.stdout, /jwt-value/);
+
 run(["unlock"], "newsecret\n");
 
 assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /WEB_SECRET=web-value/);

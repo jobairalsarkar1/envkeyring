@@ -32,6 +32,7 @@ async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "seal") return commandSeal(parseOptions(args));
   if (cmd === "unlock") return commandUnlock(parseOptions(args));
   if (cmd === "verify") return commandVerify();
+  if (cmd === "list") return commandList(parseOptions(args));
   if (cmd === "rotate-key") return commandRotateKey();
   if (cmd === "doctor") return commandDoctor(parseOptions(args));
 
@@ -171,6 +172,26 @@ async function commandVerify(): Promise<void> {
   }
 }
 
+async function commandList(options: CliOptions): Promise<void> {
+  const root = await requireRoot();
+  const vault = await readVault(root);
+  const passphrase = await askSecret("Unlock key: ");
+  const payload = decryptVault(vault, passphrase);
+  const selectedFiles = options.scope !== undefined
+    ? selectScopedFiles(payload.files, options.scope)
+    : payload.files;
+
+  if (selectedFiles.length === 0) throw new Error("No sealed env files matched that scope.");
+
+  console.log(`Vault contains ${selectedFiles.length} sealed env file${selectedFiles.length === 1 ? "" : "s"}:`);
+  for (const file of selectedFiles) {
+    console.log(`\n${file.path}`);
+    for (const entry of file.entries) {
+      console.log(`  ${entry.key}`);
+    }
+  }
+}
+
 async function commandRotateKey(): Promise<void> {
   const root = await requireRoot();
   const vault = await readVault(root);
@@ -241,6 +262,7 @@ Usage:
   envkeyring seal [path]
   envkeyring unlock [path] [--force]
   envkeyring verify
+  envkeyring list [path]
   envkeyring rotate-key
   envkeyring doctor [path]
 
@@ -253,6 +275,7 @@ Commands:
   seal      Encrypt discovered .env files and generate .env.example files
   unlock    Restore .env files from the encrypted vault
   verify    Check an unlock key without writing .env files
+  list      List sealed env files and variable names without showing values
   rotate-key
             Re-encrypt the vault with a new unlock key
   doctor    Compare env usage in code with checked-in examples

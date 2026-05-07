@@ -75,6 +75,12 @@ After cloning the repo, verify the unlock key:
 npx envkeyring verify
 ```
 
+Inspect the sealed files and variable names without printing values:
+
+```bash
+npx envkeyring list
+```
+
 Restore `.env` files:
 
 ```bash
@@ -96,6 +102,7 @@ You can scope commands to one app or package:
 ```bash
 npx envkeyring status apps/api
 npx envkeyring seal apps/api
+npx envkeyring list apps/api
 npx envkeyring unlock apps/web
 npx envkeyring doctor packages/worker
 ```
@@ -125,6 +132,12 @@ npx envkeyring verify
 ```
 
 Checks that an unlock key can decrypt the vault without writing `.env` files.
+
+```bash
+npx envkeyring list [path]
+```
+
+Lists sealed env file paths and variable names without printing values.
 
 ```bash
 npx envkeyring unlock [path] [--force]
