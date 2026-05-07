@@ -1,5 +1,9 @@
 # envkeyring
 
+[![CI](https://github.com/jobairalsarkar1/envkeyring/actions/workflows/ci.yml/badge.svg)](https://github.com/jobairalsarkar1/envkeyring/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/envkeyring.svg)](https://www.npmjs.com/package/envkeyring)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 `envkeyring` is a git-like encrypted `.env` handoff tool for teams and monorepos.
 
 Admins seal real `.env` values into a project-local encrypted vault. Teammates clone the repo, receive the unlock key through whatever channel the team chooses, and restore the same `.env` files locally.
