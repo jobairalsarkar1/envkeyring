@@ -22,6 +22,17 @@ function run(args, input = "") {
   return result;
 }
 
+function runFail(args, input = "") {
+  const result = spawnSync(process.execPath, [cli, ...args], {
+    cwd: root,
+    input,
+    encoding: "utf8"
+  });
+
+  assert.notEqual(result.status, 0, `${args.join(" ")} unexpectedly succeeded\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
+  return result;
+}
+
 fs.mkdirSync(path.join(root, "apps/web"), { recursive: true });
 fs.mkdirSync(path.join(root, "apps/api"), { recursive: true });
 fs.writeFileSync(path.join(root, "apps/web/.env"), "PUBLIC_URL=http://localhost:3000\nWEB_SECRET=web-value\n");
@@ -47,6 +58,10 @@ fs.rmSync(path.join(root, "apps/web/.env"));
 fs.rmSync(path.join(root, "apps/api/.env"));
 
 run(["rotate-key"], "supersecret\nnewsecret\nnewsecret\n");
+
+const wrongVerify = runFail(["verify"], "wrongsecret\n");
+assert.match(wrongVerify.stderr, /envkeyring:/);
+
 const verify = run(["verify"], "newsecret\n");
 assert.match(verify.stdout, /Unlock key verified for 2 sealed env files/);
 assert.match(verify.stdout, /apps\/api\/\.env/);
@@ -57,7 +72,22 @@ assert.match(list.stdout, /DATABASE_URL/);
 assert.match(list.stdout, /JWT_SECRET/);
 assert.doesNotMatch(list.stdout, /jwt-value/);
 
-run(["unlock"], "newsecret\n");
+fs.writeFileSync(path.join(root, "apps/api/.env"), "DATABASE_URL=local-override\nJWT_SECRET=local-override\n");
+
+const scopedUnlock = run(["unlock", "apps/web"], "newsecret\n");
+assert.match(scopedUnlock.stdout, /Wrote apps\/web\/\.env/);
+assert.doesNotMatch(scopedUnlock.stdout, /apps\/api\/\.env/);
+assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /WEB_SECRET=web-value/);
+assert.match(fs.readFileSync(path.join(root, "apps/api/.env"), "utf8"), /local-override/);
+
+const skippedUnlock = run(["unlock"], "newsecret\n");
+assert.match(skippedUnlock.stdout, /Skipped existing apps\/api\/\.env/);
+assert.match(skippedUnlock.stdout, /Skipped existing apps\/web\/\.env/);
+assert.match(fs.readFileSync(path.join(root, "apps/api/.env"), "utf8"), /local-override/);
+
+const forceUnlock = run(["unlock", "--force"], "newsecret\n");
+assert.match(forceUnlock.stdout, /Wrote apps\/api\/\.env/);
+assert.match(forceUnlock.stdout, /Wrote apps\/web\/\.env/);
 
 assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /WEB_SECRET=web-value/);
 assert.match(fs.readFileSync(path.join(root, "apps/api/.env"), "utf8"), /DATABASE_URL=postgres:\/\/local/);
