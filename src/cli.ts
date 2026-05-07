@@ -8,6 +8,7 @@ import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./e
 import { askSecret } from "./prompt.js";
 import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, vaultPath } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
+import { empty, field, heading, item, success, warn } from "./output.js";
 import type { VaultEnvelope, VaultPayload } from "./types.js";
 
 type CliOptions = {
@@ -21,7 +22,7 @@ try {
   await main(command, args);
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  console.error(`\n${TOOL_NAME}: ${message}`);
+  console.error(`[error] ${TOOL_NAME}: ${message}`);
   process.exitCode = 1;
 }
 
@@ -59,39 +60,39 @@ async function commandInit(): Promise<void> {
   const relative = path.relative(process.cwd(), path.join(root, TOOL_DIR)) || TOOL_DIR;
 
   if (created) {
-    console.log(`Initialized ${TOOL_NAME} at ${relative}`);
+    success(`Initialized ${TOOL_NAME} at ${relative}`);
   } else {
-    console.log(`${TOOL_NAME} is already initialized at ${relative}`);
+    warn(`${TOOL_NAME} is already initialized at ${relative}`);
   }
 }
 
 async function commandStatus(options: CliOptions): Promise<void> {
   const root = await findRepoRoot();
   if (!root) {
-    console.log(`${TOOL_NAME} status`);
-    console.log("Initialized: no");
-    console.log(`Run "envkeyring init" to create ${TOOL_DIR}/.`);
+    heading(`${TOOL_NAME} status`);
+    field("Initialized", "no");
+    warn(`Run "envkeyring init" to create ${TOOL_DIR}/.`);
     return;
   }
 
   const envFiles = await discoverEnvFiles(root, options.scope);
   const vaultExists = await exists(vaultPath(root));
 
-  console.log(`${TOOL_NAME} status`);
-  console.log(`Root: ${path.relative(process.cwd(), root) || "."}`);
-  console.log("Initialized: yes");
-  console.log(`Vault: ${vaultExists ? path.relative(process.cwd(), vaultPath(root)) : "missing"}`);
-  console.log(`Env files: ${envFiles.length}`);
+  heading(`${TOOL_NAME} status`);
+  field("Root", path.relative(process.cwd(), root) || ".");
+  field("Initialized", "yes");
+  field("Vault", vaultExists ? path.relative(process.cwd(), vaultPath(root)) : "missing");
+  field("Env files", envFiles.length);
 
   if (envFiles.length === 0) {
-    console.log("  none");
+    empty();
     return;
   }
 
   for (const filePath of envFiles) {
     const relativePath = toPosixPath(path.relative(root, filePath));
     const exampleExists = await exists(examplePathFor(filePath));
-    console.log(`  ${relativePath} (${exampleExists ? "example ok" : "missing example"})`);
+    item(`${relativePath} (${exampleExists ? "example ok" : "missing example"})`);
   }
 }
 
@@ -127,9 +128,9 @@ async function commandSeal(options: CliOptions): Promise<void> {
 
   await fs.writeFile(vaultPath(root), `${JSON.stringify(encryptVault(payload, passphrase), null, 2)}\n`, "utf8");
 
-  console.log(`Sealed ${files.length} env file${files.length === 1 ? "" : "s"} into ${path.relative(process.cwd(), vaultPath(root))}`);
+  success(`Sealed ${files.length} env file${files.length === 1 ? "" : "s"} into ${path.relative(process.cwd(), vaultPath(root))}`);
   for (const file of files) {
-    console.log(`  ${file.path}`);
+    item(file.path);
   }
 }
 
@@ -148,16 +149,16 @@ async function commandUnlock(options: CliOptions): Promise<void> {
   for (const file of selectedFiles) {
     const target = fromPosixPath(root, file.path);
     if (!options.force && await exists(target)) {
-      console.log(`Skipped existing ${file.path} (use --force to overwrite)`);
+      warn(`Skipped existing ${file.path} (use --force to overwrite)`);
       continue;
     }
 
     await writeEnvFile(target, file.entries);
     written += 1;
-    console.log(`Wrote ${file.path}`);
+    item(`Wrote ${file.path}`);
   }
 
-  console.log(`Unlocked ${written} env file${written === 1 ? "" : "s"}.`);
+  success(`Unlocked ${written} env file${written === 1 ? "" : "s"}.`);
 }
 
 async function commandVerify(): Promise<void> {
@@ -166,9 +167,9 @@ async function commandVerify(): Promise<void> {
   const passphrase = await askSecret("Unlock key: ");
   const payload = decryptVault(vault, passphrase);
 
-  console.log(`Unlock key verified for ${payload.files.length} sealed env file${payload.files.length === 1 ? "" : "s"}.`);
+  success(`Unlock key verified for ${payload.files.length} sealed env file${payload.files.length === 1 ? "" : "s"}.`);
   for (const file of payload.files) {
-    console.log(`  ${file.path}`);
+    item(file.path);
   }
 }
 
@@ -183,11 +184,11 @@ async function commandList(options: CliOptions): Promise<void> {
 
   if (selectedFiles.length === 0) throw new Error("No sealed env files matched that scope.");
 
-  console.log(`Vault contains ${selectedFiles.length} sealed env file${selectedFiles.length === 1 ? "" : "s"}:`);
+  heading(`Vault contains ${selectedFiles.length} sealed env file${selectedFiles.length === 1 ? "" : "s"}:`);
   for (const file of selectedFiles) {
     console.log(`\n${file.path}`);
     for (const entry of file.entries) {
-      console.log(`  ${entry.key}`);
+      item(entry.key);
     }
   }
 }
@@ -200,7 +201,7 @@ async function commandRotateKey(): Promise<void> {
   const newPassphrase = await readNewPassphrase();
 
   await fs.writeFile(vaultPath(root), `${JSON.stringify(encryptVault(payload, newPassphrase), null, 2)}\n`, "utf8");
-  console.log(`Rotated unlock key for ${payload.files.length} sealed env file${payload.files.length === 1 ? "" : "s"}.`);
+  success(`Rotated unlock key for ${payload.files.length} sealed env file${payload.files.length === 1 ? "" : "s"}.`);
 }
 
 function selectScopedFiles(files: VaultPayload["files"], scope: string): VaultPayload["files"] {
@@ -213,9 +214,9 @@ async function commandDoctor(options: CliOptions): Promise<void> {
   const reportRoot = options.scope ? path.resolve(root, options.scope) : root;
   const report = await runDoctor(reportRoot);
 
-  console.log(`${TOOL_NAME} doctor`);
-  console.log(`Used env keys found: ${report.usedKeys.length}`);
-  console.log(`Example env keys found: ${report.exampleKeys.length}`);
+  heading(`${TOOL_NAME} doctor`);
+  field("Used env keys found", report.usedKeys.length);
+  field("Example env keys found", report.exampleKeys.length);
 
   printKeyList("Used in code but missing from examples", report.missingFromExamples);
   printKeyList("Present in examples but not found in code", report.unusedExamples);
@@ -244,12 +245,12 @@ async function readNewPassphrase(): Promise<string> {
 function printKeyList(label: string, keys: string[]): void {
   console.log(`\n${label}:`);
   if (keys.length === 0) {
-    console.log("  none");
+    empty();
     return;
   }
 
   for (const key of keys) {
-    console.log(`  ${key}`);
+    item(key);
   }
 }
 
