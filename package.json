@@ -1,0 +1,34 @@
+{
+  "name": "envkeyring",
+  "version": "0.1.0",
+  "description": "A git-like encrypted .env handoff tool with monorepo support.",
+  "type": "module",
+  "bin": {
+    "envkeyring": "./dist/cli.js",
+    "ekr": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node test/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "dotenv",
+    "env",
+    "secrets",
+    "cli",
+    "monorepo"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

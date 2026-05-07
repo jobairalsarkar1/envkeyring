@@ -1,0 +1,197 @@
+#!/usr/bin/env node
+import fs from "node:fs/promises";
+import path from "node:path";
+import { TOOL_DIR, TOOL_NAME } from "./constants.js";
+import { decryptVault, encryptVault } from "./crypto.js";
+import { runDoctor } from "./doctor.js";
+import { readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
+import { askSecret } from "./prompt.js";
+import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, vaultPath } from "./repo.js";
+import { fromPosixPath, toPosixPath } from "./path-utils.js";
+import type { VaultEnvelope, VaultPayload } from "./types.js";
+
+type CliOptions = {
+  force: boolean;
+  scope?: string;
+};
+
+const [, , command = "help", ...args] = process.argv;
+
+try {
+  await main(command, args);
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`\n${TOOL_NAME}: ${message}`);
+  process.exitCode = 1;
+}
+
+async function main(cmd: string, args: string[]): Promise<void> {
+  if (cmd === "help" || cmd === "--help" || cmd === "-h") return printHelp();
+  if (cmd === "init") return commandInit();
+  if (cmd === "seal") return commandSeal(parseOptions(args));
+  if (cmd === "unlock") return commandUnlock(parseOptions(args));
+  if (cmd === "doctor") return commandDoctor(parseOptions(args));
+
+  throw new Error(`Unknown command "${cmd}". Run "envkeyring help".`);
+}
+
+function parseOptions(args: string[]): CliOptions {
+  const options: CliOptions = { force: false };
+  for (const arg of args) {
+    if (arg === "--force" || arg === "-f") {
+      options.force = true;
+    } else if (!options.scope) {
+      options.scope = arg;
+    } else {
+      throw new Error(`Unexpected argument "${arg}".`);
+    }
+  }
+  return options;
+}
+
+async function commandInit(): Promise<void> {
+  const root = await inferInitRoot();
+  const created = await initRepo(root);
+  const relative = path.relative(process.cwd(), path.join(root, TOOL_DIR)) || TOOL_DIR;
+
+  if (created) {
+    console.log(`Initialized ${TOOL_NAME} at ${relative}`);
+  } else {
+    console.log(`${TOOL_NAME} is already initialized at ${relative}`);
+  }
+}
+
+async function commandSeal(options: CliOptions): Promise<void> {
+  const root = await requireRoot();
+  const envFiles = await discoverEnvFiles(root, options.scope);
+
+  if (envFiles.length === 0) {
+    throw new Error("No .env files found to seal.");
+  }
+
+  const passphrase = await readNewPassphrase();
+  const files = [];
+
+  for (const filePath of envFiles) {
+    const entries = await readEnvFile(filePath);
+    if (entries.length === 0) continue;
+
+    await writeExampleFile(filePath, entries);
+    files.push({
+      path: toPosixPath(path.relative(root, filePath)),
+      entries
+    });
+  }
+
+  if (files.length === 0) throw new Error("No env variables found in discovered .env files.");
+
+  const payload: VaultPayload = {
+    version: 1,
+    sealedAt: new Date().toISOString(),
+    files
+  };
+
+  await fs.writeFile(vaultPath(root), `${JSON.stringify(encryptVault(payload, passphrase), null, 2)}\n`, "utf8");
+
+  console.log(`Sealed ${files.length} env file${files.length === 1 ? "" : "s"} into ${path.relative(process.cwd(), vaultPath(root))}`);
+  for (const file of files) {
+    console.log(`  ${file.path}`);
+  }
+}
+
+async function commandUnlock(options: CliOptions): Promise<void> {
+  const root = await requireRoot();
+  const vault = await readVault(root);
+  const passphrase = await askSecret("Unlock key: ");
+  const payload = decryptVault(vault, passphrase);
+  const selectedFiles = options.scope !== undefined
+    ? selectScopedFiles(payload.files, options.scope)
+    : payload.files;
+
+  if (selectedFiles.length === 0) throw new Error("No sealed env files matched that scope.");
+
+  let written = 0;
+  for (const file of selectedFiles) {
+    const target = fromPosixPath(root, file.path);
+    if (!options.force && await exists(target)) {
+      console.log(`Skipped existing ${file.path} (use --force to overwrite)`);
+      continue;
+    }
+
+    await writeEnvFile(target, file.entries);
+    written += 1;
+    console.log(`Wrote ${file.path}`);
+  }
+
+  console.log(`Unlocked ${written} env file${written === 1 ? "" : "s"}.`);
+}
+
+function selectScopedFiles(files: VaultPayload["files"], scope: string): VaultPayload["files"] {
+  const normalizedScope = toPosixPath(scope).replace(/\/$/, "");
+  return files.filter((file) => file.path === normalizedScope || file.path.startsWith(`${normalizedScope}/`));
+}
+
+async function commandDoctor(options: CliOptions): Promise<void> {
+  const root = await requireRoot();
+  const reportRoot = options.scope ? path.resolve(root, options.scope) : root;
+  const report = await runDoctor(reportRoot);
+
+  console.log(`${TOOL_NAME} doctor`);
+  console.log(`Used env keys found: ${report.usedKeys.length}`);
+  console.log(`Example env keys found: ${report.exampleKeys.length}`);
+
+  printKeyList("Used in code but missing from examples", report.missingFromExamples);
+  printKeyList("Present in examples but not found in code", report.unusedExamples);
+}
+
+async function requireRoot(): Promise<string> {
+  const root = await findRepoRoot();
+  if (!root) throw new Error(`No ${TOOL_DIR} folder found. Run "envkeyring init" first.`);
+  return root;
+}
+
+async function readVault(root: string): Promise<VaultEnvelope> {
+  const filePath = vaultPath(root);
+  if (!await exists(filePath)) throw new Error("No vault found. Ask an admin to run \"envkeyring seal\" first.");
+  return JSON.parse(await fs.readFile(filePath, "utf8")) as VaultEnvelope;
+}
+
+async function readNewPassphrase(): Promise<string> {
+  const passphrase = await askSecret("New unlock key: ");
+  if (passphrase.length < 8) throw new Error("Unlock key must be at least 8 characters.");
+  const confirmation = await askSecret("Confirm unlock key: ");
+  if (passphrase !== confirmation) throw new Error("Unlock keys did not match.");
+  return passphrase;
+}
+
+function printKeyList(label: string, keys: string[]): void {
+  console.log(`\n${label}:`);
+  if (keys.length === 0) {
+    console.log("  none");
+    return;
+  }
+
+  for (const key of keys) {
+    console.log(`  ${key}`);
+  }
+}
+
+function printHelp(): void {
+  console.log(`envkeyring
+
+Usage:
+  envkeyring init
+  envkeyring seal [path]
+  envkeyring unlock [path] [--force]
+  envkeyring doctor [path]
+
+Aliases:
+  ekr
+
+Commands:
+  init      Create a project-local .envkeyring folder
+  seal      Encrypt discovered .env files and generate .env.example files
+  unlock    Restore .env files from the encrypted vault
+  doctor    Compare env usage in code with checked-in examples
+`);
+}
