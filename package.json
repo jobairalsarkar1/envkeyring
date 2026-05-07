@@ -12,8 +12,8 @@
   },
   "homepage": "https://github.com/jobairalsarkar1/envkeyring#readme",
   "bin": {
-    "envkeyring": "./dist/cli.js",
-    "ekr": "./dist/cli.js"
+    "envkeyring": "dist/cli.js",
+    "ekr": "dist/cli.js"
   },
   "files": [
     "dist",
