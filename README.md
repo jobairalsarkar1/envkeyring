@@ -35,6 +35,12 @@ By default, `unlock` skips existing `.env` files. Use `--force` to overwrite:
 npx envkeyring unlock --force
 ```
 
+Admins can rotate the shared unlock key without needing local `.env` files:
+
+```bash
+npx envkeyring rotate-key
+```
+
 ## Monorepos
 
 Run commands from anywhere inside the repo. `envkeyring` walks upward until it finds `.envkeyring/`, then keeps all env file paths relative to that root.

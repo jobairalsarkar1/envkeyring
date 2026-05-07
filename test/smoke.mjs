@@ -46,7 +46,8 @@ assert.match(afterSealStatus.stdout, /example ok/);
 fs.rmSync(path.join(root, "apps/web/.env"));
 fs.rmSync(path.join(root, "apps/api/.env"));
 
-run(["unlock"], "supersecret\n");
+run(["rotate-key"], "supersecret\nnewsecret\nnewsecret\n");
+run(["unlock"], "newsecret\n");
 
 assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /WEB_SECRET=web-value/);
 assert.match(fs.readFileSync(path.join(root, "apps/api/.env"), "utf8"), /DATABASE_URL=postgres:\/\/local/);

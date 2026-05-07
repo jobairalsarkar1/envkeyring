@@ -31,6 +31,7 @@ async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "status") return commandStatus(parseOptions(args));
   if (cmd === "seal") return commandSeal(parseOptions(args));
   if (cmd === "unlock") return commandUnlock(parseOptions(args));
+  if (cmd === "rotate-key") return commandRotateKey();
   if (cmd === "doctor") return commandDoctor(parseOptions(args));
 
   throw new Error(`Unknown command "${cmd}". Run "envkeyring help".`);
@@ -157,6 +158,17 @@ async function commandUnlock(options: CliOptions): Promise<void> {
   console.log(`Unlocked ${written} env file${written === 1 ? "" : "s"}.`);
 }
 
+async function commandRotateKey(): Promise<void> {
+  const root = await requireRoot();
+  const vault = await readVault(root);
+  const currentPassphrase = await askSecret("Current unlock key: ");
+  const payload = decryptVault(vault, currentPassphrase);
+  const newPassphrase = await readNewPassphrase();
+
+  await fs.writeFile(vaultPath(root), `${JSON.stringify(encryptVault(payload, newPassphrase), null, 2)}\n`, "utf8");
+  console.log(`Rotated unlock key for ${payload.files.length} sealed env file${payload.files.length === 1 ? "" : "s"}.`);
+}
+
 function selectScopedFiles(files: VaultPayload["files"], scope: string): VaultPayload["files"] {
   const normalizedScope = toPosixPath(scope).replace(/\/$/, "");
   return files.filter((file) => file.path === normalizedScope || file.path.startsWith(`${normalizedScope}/`));
@@ -215,6 +227,7 @@ Usage:
   envkeyring status [path]
   envkeyring seal [path]
   envkeyring unlock [path] [--force]
+  envkeyring rotate-key
   envkeyring doctor [path]
 
 Aliases:
@@ -225,6 +238,8 @@ Commands:
   status    Show vault and env file state
   seal      Encrypt discovered .env files and generate .env.example files
   unlock    Restore .env files from the encrypted vault
+  rotate-key
+            Re-encrypt the vault with a new unlock key
   doctor    Compare env usage in code with checked-in examples
 `);
 }
