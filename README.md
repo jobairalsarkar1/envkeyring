@@ -123,8 +123,14 @@ npx envkeyring doctor packages/worker
 
 ```json
 {
-  "include": ["**/.env", "**/.env.*"],
+  "include": [".env", ".env.*", "**/.env", "**/.env.*"],
   "exclude": [
+    ".env.example",
+    ".env.*.example",
+    ".env.sample",
+    ".env.*.sample",
+    ".env.template",
+    ".env.*.template",
     "**/.env.example",
     "**/.env.*.example",
     "**/.env.sample",

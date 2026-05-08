@@ -39,6 +39,7 @@ fs.writeFileSync(path.join(root, "apps/web/.env"), "PUBLIC_URL=http://localhost:
 fs.writeFileSync(path.join(root, "apps/web/.env.local"), "LOCAL_ONLY=do-not-seal\n");
 fs.writeFileSync(path.join(root, "apps/api/.env"), "DATABASE_URL=postgres://local\nJWT_SECRET=jwt-value\n");
 fs.writeFileSync(path.join(root, "apps/api/server.ts"), "console.log(process.env.DATABASE_URL, process.env.MISSING_FROM_EXAMPLE);\n");
+fs.writeFileSync(path.join(root, ".env.local"), "ROOT_SECRET=root-value\n");
 
 run(["init"]);
 const configOutput = run(["config", "add-exclude", "**/.env.local"]);
@@ -52,6 +53,7 @@ assert.match(beforeSealStatus.stdout, /Exclude: .*\.env\.local/);
 run(["seal"], "supersecret\nsupersecret\n");
 
 assert.ok(fs.existsSync(path.join(root, ".envkeyring/vault.enc.json")));
+assert.equal(fs.readFileSync(path.join(root, ".env.local.example"), "utf8"), "ROOT_SECRET=<encrypted>\n");
 assert.equal(fs.readFileSync(path.join(root, "apps/web/.env.example"), "utf8"), "PUBLIC_URL=<encrypted>\nWEB_SECRET=<encrypted>\n");
 assert.equal(fs.readFileSync(path.join(root, "apps/api/.env.example"), "utf8"), "DATABASE_URL=<encrypted>\nJWT_SECRET=<encrypted>\n");
 assert.equal(fs.existsSync(path.join(root, "apps/web/.env.local.example")), false);
@@ -62,6 +64,7 @@ assert.match(afterSealStatus.stdout, /example ok/);
 
 fs.rmSync(path.join(root, "apps/web/.env"));
 fs.rmSync(path.join(root, "apps/api/.env"));
+fs.rmSync(path.join(root, ".env.local"));
 
 run(["rotate-key"], "supersecret\nnewsecret\nnewsecret\n");
 
@@ -69,7 +72,7 @@ const wrongVerify = runFail(["verify"], "wrongsecret\n");
 assert.match(wrongVerify.stderr, /envkeyring:/);
 
 const verify = run(["verify"], "newsecret\n");
-assert.match(verify.stdout, /Unlock key verified for 2 sealed env files/);
+assert.match(verify.stdout, /Unlock key verified for 3 sealed env files/);
 assert.match(verify.stdout, /apps\/api\/\.env/);
 
 const list = run(["list", "apps/api"], "newsecret\n");
@@ -92,9 +95,11 @@ assert.match(skippedUnlock.stdout, /Skipped existing apps\/web\/\.env/);
 assert.match(fs.readFileSync(path.join(root, "apps/api/.env"), "utf8"), /local-override/);
 
 const forceUnlock = run(["unlock", "--force"], "newsecret\n");
+assert.match(forceUnlock.stdout, /Wrote \.env\.local/);
 assert.match(forceUnlock.stdout, /Wrote apps\/api\/\.env/);
 assert.match(forceUnlock.stdout, /Wrote apps\/web\/\.env/);
 
+assert.match(fs.readFileSync(path.join(root, ".env.local"), "utf8"), /ROOT_SECRET=root-value/);
 assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /WEB_SECRET=web-value/);
 assert.match(fs.readFileSync(path.join(root, "apps/api/.env"), "utf8"), /DATABASE_URL=postgres:\/\/local/);
 
