@@ -178,6 +178,13 @@ npx envkeyring config add-include "apps/**/.env.production"
 npx envkeyring config remove-exclude "**/.env.test"
 ```
 
+Check or fix project `.gitignore` rules with:
+
+```bash
+npx envkeyring gitignore
+npx envkeyring gitignore fix
+```
+
 ## Commands
 
 ```bash
@@ -209,6 +216,13 @@ npx envkeyring config upgrade
 ```
 
 Adds any missing default discovery patterns to an existing config while preserving custom rules.
+
+```bash
+npx envkeyring gitignore [status]
+npx envkeyring gitignore fix
+```
+
+Checks whether project `.gitignore` rules accidentally ignore `.envkeyring/`. The fix command appends the allow-list needed to commit vault files while keeping real env files and the admin private signing key ignored.
 
 ```bash
 npx envkeyring config add-include <pattern>
@@ -282,7 +296,15 @@ A typical project using `envkeyring` should ignore real env files:
 .env.*
 !.env.example
 !.env.*.example
+!.envkeyring/
+!.envkeyring/config.json
+!.envkeyring/.gitignore
+!.envkeyring/vault.enc.json
+!.envkeyring/vault.meta.json
+.envkeyring/admin.private.pem
 ```
+
+`envkeyring init` and `envkeyring status` warn when a broad rule like `.env*` also ignores `.envkeyring/`. Run `npx envkeyring gitignore fix` to append the recommended allow-list automatically.
 
 Commit:
 

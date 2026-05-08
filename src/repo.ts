@@ -20,6 +20,23 @@ export const DEFAULT_EXCLUDE = [
   "**/.env.*.template"
 ];
 
+export const RECOMMENDED_GITIGNORE_LINES = [
+  `!${TOOL_DIR}/`,
+  `!${TOOL_DIR}/${CONFIG_FILE}`,
+  `!${TOOL_DIR}/${TOOL_GITIGNORE_FILE}`,
+  `!${TOOL_DIR}/${VAULT_FILE}`,
+  `!${TOOL_DIR}/${VAULT_META_FILE}`,
+  `${TOOL_DIR}/${ADMIN_PRIVATE_KEY_FILE}`
+];
+
+export type GitignoreCheck = {
+  gitignorePath: string;
+  ignored: boolean;
+  needsFix: boolean;
+  matchedPatterns: string[];
+  missingRecommendedLines: string[];
+};
+
 export async function findRepoRoot(start = process.cwd()): Promise<string | null> {
   let current = path.resolve(start);
 
@@ -75,6 +92,48 @@ export function adminPrivateKeyPath(root: string): string {
 
 export function toolGitignorePath(root: string): string {
   return path.join(root, TOOL_DIR, TOOL_GITIGNORE_FILE);
+}
+
+export function projectGitignorePath(root: string): string {
+  return path.join(root, ".gitignore");
+}
+
+export async function checkProjectGitignore(root: string): Promise<GitignoreCheck> {
+  const gitignorePath = projectGitignorePath(root);
+  const content = await exists(gitignorePath) ? await fs.readFile(gitignorePath, "utf8") : "";
+  const patterns = parseGitignoreLines(content);
+  const matchedPatterns = patterns
+    .filter((pattern) => !pattern.negated && gitignorePatternMatches(pattern.value, TOOL_DIR))
+    .map((pattern) => pattern.raw);
+  const unignorePatterns = patterns
+    .filter((pattern) => pattern.negated && gitignorePatternMatches(pattern.value, TOOL_DIR))
+    .map((pattern) => pattern.raw);
+  const ignored = matchedPatterns.length > 0 && unignorePatterns.length === 0;
+  const existingLines = new Set(patterns.map((pattern) => pattern.raw));
+  const missingRecommendedLines = RECOMMENDED_GITIGNORE_LINES.filter((line) => !existingLines.has(line));
+  const needsFix = ignored || (matchedPatterns.length > 0 && missingRecommendedLines.length > 0);
+
+  return {
+    gitignorePath,
+    ignored,
+    needsFix,
+    matchedPatterns,
+    missingRecommendedLines
+  };
+}
+
+export async function fixProjectGitignore(root: string): Promise<GitignoreCheck> {
+  const before = await checkProjectGitignore(root);
+  if (!before.needsFix && before.missingRecommendedLines.length === 0) return before;
+
+  const gitignorePath = projectGitignorePath(root);
+  const existing = await exists(gitignorePath) ? await fs.readFile(gitignorePath, "utf8") : "";
+  const lines = existing.trimEnd().length > 0
+    ? [`${existing.trimEnd()}`, "", "# envkeyring vault files", ...before.missingRecommendedLines]
+    : ["# envkeyring vault files", ...before.missingRecommendedLines];
+
+  await fs.writeFile(gitignorePath, `${lines.join("\n")}\n`, "utf8");
+  return checkProjectGitignore(root);
 }
 
 export async function discoverEnvFiles(root: string, scope?: string): Promise<string[]> {
@@ -167,6 +226,28 @@ function globToRegExp(pattern: string): RegExp {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&");
+}
+
+function parseGitignoreLines(content: string): Array<{ raw: string; value: string; negated: boolean }> {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .map((raw) => {
+      const negated = raw.startsWith("!");
+      return {
+        raw,
+        negated,
+        value: negated ? raw.slice(1) : raw
+      };
+    });
+}
+
+function gitignorePatternMatches(pattern: string, value: string): boolean {
+  const normalized = pattern.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  if (normalized === value) return true;
+  if (normalized === `${value}/`) return true;
+  return globToRegExp(normalized).test(value);
 }
 
 export async function exists(filePath: string): Promise<boolean> {

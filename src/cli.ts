@@ -8,7 +8,7 @@ import { decryptVault, encryptVault } from "./crypto.js";
 import { runDoctor } from "./doctor.js";
 import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
 import { askSecret } from "./prompt.js";
-import { adminPrivateKeyPath, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, toolGitignorePath, vaultMetaPath, vaultPath, writeConfig } from "./repo.js";
+import { adminPrivateKeyPath, checkProjectGitignore, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, discoverEnvFiles, exists, findRepoRoot, fixProjectGitignore, inferInitRoot, initRepo, readConfig, toolGitignorePath, vaultMetaPath, vaultPath, writeConfig } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
 import { chooseEnvFiles } from "./interactive-seal.js";
@@ -35,6 +35,7 @@ async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "init") return commandInit();
   if (cmd === "admin") return commandAdmin(args);
   if (cmd === "config") return commandConfig(args);
+  if (cmd === "gitignore") return commandGitignore(args);
   if (cmd === "status") return commandStatus(parseOptions(args));
   if (cmd === "seal") return commandSeal(parseOptions(args));
   if (cmd === "reseal") return commandReseal(parseOptions(args));
@@ -73,6 +74,8 @@ async function commandInit(): Promise<void> {
   } else {
     warn(`${TOOL_NAME} is already initialized at ${relative}`);
   }
+
+  await warnIfProjectGitignoreNeedsFix(root);
 }
 
 async function commandConfig(args: string[]): Promise<void> {
@@ -212,6 +215,57 @@ function removePattern(patterns: string[], pattern: string): void {
   if (index !== -1) patterns.splice(index, 1);
 }
 
+async function commandGitignore(args: string[]): Promise<void> {
+  const root = await requireRoot();
+  const [action = "status", ...extra] = args;
+  if (extra.length > 0) throw new Error(`Unexpected argument "${extra[0]}".`);
+
+  if (action === "status") {
+    await printProjectGitignoreStatus(root);
+    return;
+  }
+
+  if (action === "fix") {
+    const before = await checkProjectGitignore(root);
+    if (!before.needsFix && before.missingRecommendedLines.length === 0) {
+      success(`${path.relative(process.cwd(), before.gitignorePath) || ".gitignore"} already allows ${TOOL_DIR}/ vault files.`);
+      return;
+    }
+
+    await fixProjectGitignore(root);
+    success(`Updated ${path.relative(process.cwd(), before.gitignorePath) || ".gitignore"} for ${TOOL_NAME}.`);
+    await printProjectGitignoreStatus(root);
+    return;
+  }
+
+  throw new Error(`Unknown gitignore action "${action}". Run "envkeyring help".`);
+}
+
+async function printProjectGitignoreStatus(root: string): Promise<void> {
+  const check = await checkProjectGitignore(root);
+  heading(`${TOOL_NAME} gitignore`);
+  field("File", path.relative(process.cwd(), check.gitignorePath) || ".gitignore");
+  field(`${TOOL_DIR}`, check.needsFix ? "needs fix" : "allowed");
+
+  if (check.matchedPatterns.length > 0) {
+    console.log("\nMatching ignore rules:");
+    for (const pattern of check.matchedPatterns) item(pattern);
+  }
+
+  if (check.missingRecommendedLines.length > 0) {
+    console.log("\nRecommended lines to add:");
+    for (const line of check.missingRecommendedLines) item(line);
+  }
+}
+
+async function warnIfProjectGitignoreNeedsFix(root: string): Promise<void> {
+  const check = await checkProjectGitignore(root);
+  if (!check.needsFix) return;
+
+  warn(`${TOOL_DIR}/ may not be commit-ready because of ${path.relative(process.cwd(), check.gitignorePath) || ".gitignore"}${check.matchedPatterns.length > 0 ? ` (${check.matchedPatterns.join(", ")})` : ""}.`);
+  warn(`Run "envkeyring gitignore fix" so config, vault, and metadata files can be committed.`);
+}
+
 async function commandStatus(options: CliOptions): Promise<void> {
   const root = await findRepoRoot();
   if (!root) {
@@ -226,6 +280,7 @@ async function commandStatus(options: CliOptions): Promise<void> {
   const meta = vaultExists ? await readVaultMetadata(root) : null;
   const config = await readConfig(root);
   const signatureStatus = meta ? verifyVaultMetadataSignature(meta, config) : null;
+  const gitignoreCheck = await checkProjectGitignore(root);
 
   heading(`${TOOL_NAME} status`);
   field("Root", path.relative(process.cwd(), root) || ".");
@@ -237,8 +292,13 @@ async function commandStatus(options: CliOptions): Promise<void> {
     field("Signature", signatureStatus ?? "not checked");
   }
   field("Env files", envFiles.length);
+  field("Git ignore", gitignoreCheck.needsFix ? `${TOOL_DIR}/ needs fix` : `${TOOL_DIR}/ allowed`);
   field("Include", config.include.join(", "));
   field("Exclude", config.exclude.join(", "));
+
+  if (gitignoreCheck.needsFix) {
+    warn(`Run "envkeyring gitignore fix" before committing ${TOOL_NAME} vault files.`);
+  }
 
   if (envFiles.length === 0) {
     empty();
@@ -553,6 +613,8 @@ Usage:
   envkeyring init
   envkeyring admin [status]
   envkeyring admin init [--force]
+  envkeyring gitignore [status]
+  envkeyring gitignore fix
   envkeyring config [show]
   envkeyring config upgrade
   envkeyring config add-include <pattern>
@@ -574,6 +636,7 @@ Aliases:
 Commands:
   init      Create a project-local .envkeyring folder
   admin     Configure optional admin signing for vault metadata
+  gitignore Check or fix project .gitignore rules for .envkeyring
   config    Show or update env discovery rules
   status    Show vault and env file state
   seal      Encrypt discovered .env files and generate .env.example files

@@ -40,8 +40,23 @@ fs.writeFileSync(path.join(root, "apps/web/.env.local"), "LOCAL_ONLY=do-not-seal
 fs.writeFileSync(path.join(root, "apps/api/.env"), "DATABASE_URL=postgres://local\nJWT_SECRET=jwt-value\n");
 fs.writeFileSync(path.join(root, "apps/api/server.ts"), "console.log(process.env.DATABASE_URL, process.env.MISSING_FROM_EXAMPLE);\n");
 fs.writeFileSync(path.join(root, ".env.local"), "ROOT_SECRET=root-value\n");
+fs.writeFileSync(path.join(root, ".gitignore"), ".env*\nnode_modules\n");
 
-run(["init"]);
+const initOutput = run(["init"]);
+assert.match(initOutput.stdout, /\.envkeyring\/ may not be commit-ready/);
+
+const gitignoreStatusBefore = run(["gitignore"]);
+assert.match(gitignoreStatusBefore.stdout, /\.envkeyring: needs fix/);
+assert.match(gitignoreStatusBefore.stdout, /!\.envkeyring\//);
+
+const gitignoreFix = run(["gitignore", "fix"]);
+assert.match(gitignoreFix.stdout, /Updated \.gitignore/);
+assert.match(gitignoreFix.stdout, /\.envkeyring: allowed/);
+const gitignoreContent = fs.readFileSync(path.join(root, ".gitignore"), "utf8");
+assert.match(gitignoreContent, /!\.envkeyring\//);
+assert.match(gitignoreContent, /\.envkeyring\/vault\.enc\.json/);
+assert.match(gitignoreContent, /\.envkeyring\/admin\.private\.pem/);
+
 const configPath = path.join(root, ".envkeyring/config.json");
 const legacyConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
 legacyConfig.include = ["**/.env", "**/.env.*"];
