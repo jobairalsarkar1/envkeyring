@@ -86,6 +86,10 @@ export async function readConfig(root: string): Promise<EnvKeyringConfig> {
   };
 }
 
+export async function writeConfig(root: string, config: EnvKeyringConfig): Promise<void> {
+  await fs.writeFile(path.join(root, TOOL_DIR, CONFIG_FILE), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
 async function walk(root: string, dir: string, files: string[], config: EnvKeyringConfig): Promise<void> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
 

@@ -137,14 +137,18 @@ npx envkeyring doctor packages/worker
 
 Patterns match repo-relative paths using `*`, `**`, and `?`. Add project-specific exclusions when needed:
 
-```json
-{
-  "exclude": [
-    "**/.env.local",
-    "**/.env.test",
-    "fixtures/**"
-  ]
-}
+```bash
+npx envkeyring config add-exclude "**/.env.local"
+npx envkeyring config add-exclude "**/.env.test"
+npx envkeyring config add-exclude "fixtures/**"
+```
+
+You can inspect and edit rules with:
+
+```bash
+npx envkeyring config
+npx envkeyring config add-include "apps/**/.env.production"
+npx envkeyring config remove-exclude "**/.env.test"
 ```
 
 ## Commands
@@ -154,6 +158,21 @@ npx envkeyring init
 ```
 
 Creates the project-local `.envkeyring/` folder.
+
+```bash
+npx envkeyring config [show]
+```
+
+Shows active include and exclude discovery rules.
+
+```bash
+npx envkeyring config add-include <pattern>
+npx envkeyring config add-exclude <pattern>
+npx envkeyring config remove-include <pattern>
+npx envkeyring config remove-exclude <pattern>
+```
+
+Updates `.envkeyring/config.json` discovery rules.
 
 ```bash
 npx envkeyring status [path]

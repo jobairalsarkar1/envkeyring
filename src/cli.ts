@@ -6,7 +6,7 @@ import { decryptVault, encryptVault } from "./crypto.js";
 import { runDoctor } from "./doctor.js";
 import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
 import { askSecret } from "./prompt.js";
-import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultPath } from "./repo.js";
+import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultPath, writeConfig } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
 import { chooseEnvFiles } from "./interactive-seal.js";
@@ -31,6 +31,7 @@ try {
 async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "help" || cmd === "--help" || cmd === "-h") return printHelp();
   if (cmd === "init") return commandInit();
+  if (cmd === "config") return commandConfig(args);
   if (cmd === "status") return commandStatus(parseOptions(args));
   if (cmd === "seal") return commandSeal(parseOptions(args));
   if (cmd === "unlock") return commandUnlock(parseOptions(args));
@@ -68,6 +69,68 @@ async function commandInit(): Promise<void> {
   } else {
     warn(`${TOOL_NAME} is already initialized at ${relative}`);
   }
+}
+
+async function commandConfig(args: string[]): Promise<void> {
+  const root = await requireRoot();
+  const config = await readConfig(root);
+  const [action, pattern, ...extra] = args;
+
+  if (extra.length > 0) throw new Error(`Unexpected argument "${extra[0]}".`);
+
+  if (action === undefined || action === "show") {
+    printConfig(config);
+    return;
+  }
+
+  if (!pattern) throw new Error(`Missing pattern for "config ${action}".`);
+
+  if (action === "add-include") {
+    addPattern(config.include, pattern);
+    await writeConfig(root, config);
+    success(`Added include pattern ${pattern}`);
+    return;
+  }
+
+  if (action === "add-exclude") {
+    addPattern(config.exclude, pattern);
+    await writeConfig(root, config);
+    success(`Added exclude pattern ${pattern}`);
+    return;
+  }
+
+  if (action === "remove-include") {
+    removePattern(config.include, pattern);
+    await writeConfig(root, config);
+    success(`Removed include pattern ${pattern}`);
+    return;
+  }
+
+  if (action === "remove-exclude") {
+    removePattern(config.exclude, pattern);
+    await writeConfig(root, config);
+    success(`Removed exclude pattern ${pattern}`);
+    return;
+  }
+
+  throw new Error(`Unknown config action "${action}". Run "envkeyring help".`);
+}
+
+function printConfig(config: { include: string[]; exclude: string[] }): void {
+  heading(`${TOOL_NAME} config`);
+  console.log("\ninclude:");
+  for (const pattern of config.include) item(pattern);
+  console.log("\nexclude:");
+  for (const pattern of config.exclude) item(pattern);
+}
+
+function addPattern(patterns: string[], pattern: string): void {
+  if (!patterns.includes(pattern)) patterns.push(pattern);
+}
+
+function removePattern(patterns: string[], pattern: string): void {
+  const index = patterns.indexOf(pattern);
+  if (index !== -1) patterns.splice(index, 1);
 }
 
 async function commandStatus(options: CliOptions): Promise<void> {
@@ -272,6 +335,11 @@ function printHelp(): void {
 
 Usage:
   envkeyring init
+  envkeyring config [show]
+  envkeyring config add-include <pattern>
+  envkeyring config add-exclude <pattern>
+  envkeyring config remove-include <pattern>
+  envkeyring config remove-exclude <pattern>
   envkeyring status [path]
   envkeyring seal [path] [--interactive]
   envkeyring unlock [path] [--force]
@@ -285,6 +353,7 @@ Aliases:
 
 Commands:
   init      Create a project-local .envkeyring folder
+  config    Show or update env discovery rules
   status    Show vault and env file state
   seal      Encrypt discovered .env files and generate .env.example files
   unlock    Restore .env files from the encrypted vault

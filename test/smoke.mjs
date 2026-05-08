@@ -41,10 +41,8 @@ fs.writeFileSync(path.join(root, "apps/api/.env"), "DATABASE_URL=postgres://loca
 fs.writeFileSync(path.join(root, "apps/api/server.ts"), "console.log(process.env.DATABASE_URL, process.env.MISSING_FROM_EXAMPLE);\n");
 
 run(["init"]);
-const configPath = path.join(root, ".envkeyring/config.json");
-const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-config.exclude.push("**/.env.local");
-fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+const configOutput = run(["config", "add-exclude", "**/.env.local"]);
+assert.match(configOutput.stdout, /Added exclude pattern \*\*\/\.env\.local/);
 
 const beforeSealStatus = run(["status"]);
 assert.match(beforeSealStatus.stdout, /Initialized: yes/);
