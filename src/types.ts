@@ -31,4 +31,6 @@ export type EnvKeyringConfig = {
   version: 1;
   createdAt: string;
   vaultFile: string;
+  include: string[];
+  exclude: string[];
 };

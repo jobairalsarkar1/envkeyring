@@ -117,6 +117,36 @@ npx envkeyring unlock apps/web
 npx envkeyring doctor packages/worker
 ```
 
+## Discovery Rules
+
+`envkeyring init` creates `.envkeyring/config.json` with default discovery rules:
+
+```json
+{
+  "include": ["**/.env", "**/.env.*"],
+  "exclude": [
+    "**/.env.example",
+    "**/.env.*.example",
+    "**/.env.sample",
+    "**/.env.*.sample",
+    "**/.env.template",
+    "**/.env.*.template"
+  ]
+}
+```
+
+Patterns match repo-relative paths using `*`, `**`, and `?`. Add project-specific exclusions when needed:
+
+```json
+{
+  "exclude": [
+    "**/.env.local",
+    "**/.env.test",
+    "fixtures/**"
+  ]
+}
+```
+
 ## Commands
 
 ```bash

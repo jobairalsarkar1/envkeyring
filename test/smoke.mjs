@@ -36,19 +36,27 @@ function runFail(args, input = "") {
 fs.mkdirSync(path.join(root, "apps/web"), { recursive: true });
 fs.mkdirSync(path.join(root, "apps/api"), { recursive: true });
 fs.writeFileSync(path.join(root, "apps/web/.env"), "PUBLIC_URL=http://localhost:3000\nWEB_SECRET=web-value\n");
+fs.writeFileSync(path.join(root, "apps/web/.env.local"), "LOCAL_ONLY=do-not-seal\n");
 fs.writeFileSync(path.join(root, "apps/api/.env"), "DATABASE_URL=postgres://local\nJWT_SECRET=jwt-value\n");
 fs.writeFileSync(path.join(root, "apps/api/server.ts"), "console.log(process.env.DATABASE_URL, process.env.MISSING_FROM_EXAMPLE);\n");
 
 run(["init"]);
+const configPath = path.join(root, ".envkeyring/config.json");
+const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+config.exclude.push("**/.env.local");
+fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
 const beforeSealStatus = run(["status"]);
 assert.match(beforeSealStatus.stdout, /Initialized: yes/);
 assert.match(beforeSealStatus.stdout, /missing example/);
+assert.match(beforeSealStatus.stdout, /Exclude: .*\.env\.local/);
 
 run(["seal"], "supersecret\nsupersecret\n");
 
 assert.ok(fs.existsSync(path.join(root, ".envkeyring/vault.enc.json")));
 assert.equal(fs.readFileSync(path.join(root, "apps/web/.env.example"), "utf8"), "PUBLIC_URL=<encrypted>\nWEB_SECRET=<encrypted>\n");
 assert.equal(fs.readFileSync(path.join(root, "apps/api/.env.example"), "utf8"), "DATABASE_URL=<encrypted>\nJWT_SECRET=<encrypted>\n");
+assert.equal(fs.existsSync(path.join(root, "apps/web/.env.local.example")), false);
 
 const afterSealStatus = run(["status"]);
 assert.match(afterSealStatus.stdout, /Vault: \.envkeyring\/vault\.enc\.json/);

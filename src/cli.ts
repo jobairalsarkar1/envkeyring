@@ -6,7 +6,7 @@ import { decryptVault, encryptVault } from "./crypto.js";
 import { runDoctor } from "./doctor.js";
 import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
 import { askSecret } from "./prompt.js";
-import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, vaultPath } from "./repo.js";
+import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultPath } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
 import { chooseEnvFiles } from "./interactive-seal.js";
@@ -81,12 +81,15 @@ async function commandStatus(options: CliOptions): Promise<void> {
 
   const envFiles = await discoverEnvFiles(root, options.scope);
   const vaultExists = await exists(vaultPath(root));
+  const config = await readConfig(root);
 
   heading(`${TOOL_NAME} status`);
   field("Root", path.relative(process.cwd(), root) || ".");
   field("Initialized", "yes");
   field("Vault", vaultExists ? path.relative(process.cwd(), vaultPath(root)) : "missing");
   field("Env files", envFiles.length);
+  field("Include", config.include.join(", "));
+  field("Exclude", config.exclude.join(", "));
 
   if (envFiles.length === 0) {
     empty();
