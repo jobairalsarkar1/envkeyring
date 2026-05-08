@@ -1,6 +1,6 @@
 {
   "name": "envkeyring",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A git-like encrypted .env handoff tool with monorepo support.",
   "type": "module",
   "repository": {
