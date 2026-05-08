@@ -14,6 +14,27 @@ export type VaultPayload = {
   files: VaultEnvFile[];
 };
 
+export type VaultMetaFile = {
+  path: string;
+  keys: string[];
+};
+
+export type VaultMetaChanges = {
+  addedFiles: string[];
+  removedFiles: string[];
+  addedKeys: Record<string, string[]>;
+  removedKeys: Record<string, string[]>;
+};
+
+export type VaultMetadata = {
+  version: 1;
+  revision: number;
+  sealedAt: string;
+  sealedBy: string;
+  files: VaultMetaFile[];
+  changes: VaultMetaChanges;
+};
+
 export type VaultEnvelope = {
   version: 1;
   cipher: "aes-256-gcm";

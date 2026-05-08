@@ -64,6 +64,7 @@ This creates a project vault and matching examples:
 .envkeyring/
   config.json
   vault.enc.json
+  vault.meta.json
 apps/web/.env.example
 apps/api/.env.example
 ```
@@ -76,6 +77,14 @@ JWT_SECRET=<encrypted>
 ```
 
 Commit `.envkeyring/` and the generated `.env.example` files. Do not commit real `.env` files.
+
+Use `seal` for the first vault. To update an existing vault intentionally, use:
+
+```bash
+npx envkeyring reseal
+```
+
+Each seal/reseal updates `.envkeyring/vault.meta.json` with a revision number, timestamp, local actor name, sealed file paths, variable names, and key-level additions/removals.
 
 ## Teammate Workflow
 
@@ -112,6 +121,7 @@ You can scope commands to one app or package:
 ```bash
 npx envkeyring status apps/api
 npx envkeyring seal apps/api
+npx envkeyring reseal apps/api
 npx envkeyring list apps/api
 npx envkeyring unlock apps/web
 npx envkeyring doctor packages/worker
@@ -197,7 +207,17 @@ Shows whether the repo is initialized, whether a vault exists, which `.env` file
 npx envkeyring seal [path]
 ```
 
-Reads discovered `.env` files, writes matching `.env.example` files, and encrypts the real values into `.envkeyring/vault.enc.json`.
+Reads discovered `.env` files, writes matching `.env.example` files, encrypts the real values into `.envkeyring/vault.enc.json`, and writes public revision metadata to `.envkeyring/vault.meta.json`.
+
+`seal` refuses to overwrite an existing vault unless `--force` is provided. Prefer `reseal` for intentional vault updates.
+
+Add `--interactive` to choose discovered env files from a terminal checklist.
+
+```bash
+npx envkeyring reseal [path]
+```
+
+Explicitly updates an existing vault and increments the public metadata revision.
 
 Add `--interactive` to choose discovered env files from a terminal checklist.
 
@@ -247,6 +267,7 @@ Commit:
 ```txt
 .envkeyring/config.json
 .envkeyring/vault.enc.json
+.envkeyring/vault.meta.json
 *.env.example
 ```
 

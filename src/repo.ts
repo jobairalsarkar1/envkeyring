@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { CONFIG_FILE, DEFAULT_IGNORE_DIRS, TOOL_DIR, VAULT_FILE } from "./constants.js";
+import { CONFIG_FILE, DEFAULT_IGNORE_DIRS, TOOL_DIR, VAULT_FILE, VAULT_META_FILE } from "./constants.js";
 import { toPosixPath } from "./path-utils.js";
 import type { EnvKeyringConfig } from "./types.js";
 
@@ -63,6 +63,10 @@ export async function initRepo(root: string): Promise<boolean> {
 
 export function vaultPath(root: string): string {
   return path.join(root, TOOL_DIR, VAULT_FILE);
+}
+
+export function vaultMetaPath(root: string): string {
+  return path.join(root, TOOL_DIR, VAULT_META_FILE);
 }
 
 export async function discoverEnvFiles(root: string, scope?: string): Promise<string[]> {

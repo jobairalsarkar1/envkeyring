@@ -69,20 +69,34 @@ assert.match(beforeSealStatus.stdout, /Exclude: .*\.env\.local/);
 run(["seal"], "supersecret\nsupersecret\n");
 
 assert.ok(fs.existsSync(path.join(root, ".envkeyring/vault.enc.json")));
+assert.ok(fs.existsSync(path.join(root, ".envkeyring/vault.meta.json")));
+const firstMeta = JSON.parse(fs.readFileSync(path.join(root, ".envkeyring/vault.meta.json"), "utf8"));
+assert.equal(firstMeta.revision, 1);
+assert.deepEqual(firstMeta.changes.addedFiles, [".env.local", "apps/api/.env", "apps/web/.env"]);
 assert.equal(fs.readFileSync(path.join(root, ".env.local.example"), "utf8"), "ROOT_SECRET=<encrypted>\n");
 assert.equal(fs.readFileSync(path.join(root, "apps/web/.env.example"), "utf8"), "PUBLIC_URL=<encrypted>\nWEB_SECRET=<encrypted>\n");
 assert.equal(fs.readFileSync(path.join(root, "apps/api/.env.example"), "utf8"), "DATABASE_URL=<encrypted>\nJWT_SECRET=<encrypted>\n");
 assert.equal(fs.existsSync(path.join(root, "apps/web/.env.local.example")), false);
 
+const duplicateSeal = runFail(["seal"]);
+assert.match(duplicateSeal.stderr, /Vault already exists/);
+
+fs.appendFileSync(path.join(root, "apps/web/.env"), "NEXT_PUBLIC_EXTRA=extra-value\n");
+run(["reseal"], "supersecret2\nsupersecret2\n");
+const secondMeta = JSON.parse(fs.readFileSync(path.join(root, ".envkeyring/vault.meta.json"), "utf8"));
+assert.equal(secondMeta.revision, 2);
+assert.deepEqual(secondMeta.changes.addedKeys["apps/web/.env"], ["NEXT_PUBLIC_EXTRA"]);
+
 const afterSealStatus = run(["status"]);
 assert.match(afterSealStatus.stdout, /Vault: \.envkeyring\/vault\.enc\.json/);
+assert.match(afterSealStatus.stdout, /Revision: 2/);
 assert.match(afterSealStatus.stdout, /example ok/);
 
 fs.rmSync(path.join(root, "apps/web/.env"));
 fs.rmSync(path.join(root, "apps/api/.env"));
 fs.rmSync(path.join(root, ".env.local"));
 
-run(["rotate-key"], "supersecret\nnewsecret\nnewsecret\n");
+run(["rotate-key"], "supersecret2\nnewsecret\nnewsecret\n");
 
 const wrongVerify = runFail(["verify"], "wrongsecret\n");
 assert.match(wrongVerify.stderr, /envkeyring:/);
@@ -117,6 +131,7 @@ assert.match(forceUnlock.stdout, /Wrote apps\/web\/\.env/);
 
 assert.match(fs.readFileSync(path.join(root, ".env.local"), "utf8"), /ROOT_SECRET=root-value/);
 assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /WEB_SECRET=web-value/);
+assert.match(fs.readFileSync(path.join(root, "apps/web/.env"), "utf8"), /NEXT_PUBLIC_EXTRA=extra-value/);
 assert.match(fs.readFileSync(path.join(root, "apps/api/.env"), "utf8"), /DATABASE_URL=postgres:\/\/local/);
 
 const doctor = run(["doctor"]);

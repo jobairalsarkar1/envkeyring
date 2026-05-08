@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { TOOL_DIR, TOOL_NAME } from "./constants.js";
 import { decryptVault, encryptVault } from "./crypto.js";
 import { runDoctor } from "./doctor.js";
 import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
 import { askSecret } from "./prompt.js";
-import { DEFAULT_EXCLUDE, DEFAULT_INCLUDE, discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultPath, writeConfig } from "./repo.js";
+import { DEFAULT_EXCLUDE, DEFAULT_INCLUDE, discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultMetaPath, vaultPath, writeConfig } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
 import { chooseEnvFiles } from "./interactive-seal.js";
-import type { VaultEnvelope, VaultPayload } from "./types.js";
+import type { VaultEnvelope, VaultMetadata, VaultMetaFile, VaultPayload } from "./types.js";
 
 type CliOptions = {
   force: boolean;
@@ -34,6 +35,7 @@ async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "config") return commandConfig(args);
   if (cmd === "status") return commandStatus(parseOptions(args));
   if (cmd === "seal") return commandSeal(parseOptions(args));
+  if (cmd === "reseal") return commandReseal(parseOptions(args));
   if (cmd === "unlock") return commandUnlock(parseOptions(args));
   if (cmd === "verify") return commandVerify();
   if (cmd === "list") return commandList(parseOptions(args));
@@ -163,12 +165,17 @@ async function commandStatus(options: CliOptions): Promise<void> {
 
   const envFiles = await discoverEnvFiles(root, options.scope);
   const vaultExists = await exists(vaultPath(root));
+  const meta = vaultExists ? await readVaultMetadata(root) : null;
   const config = await readConfig(root);
 
   heading(`${TOOL_NAME} status`);
   field("Root", path.relative(process.cwd(), root) || ".");
   field("Initialized", "yes");
   field("Vault", vaultExists ? path.relative(process.cwd(), vaultPath(root)) : "missing");
+  if (meta) {
+    field("Revision", meta.revision);
+    field("Last sealed", `${meta.sealedAt} by ${meta.sealedBy}`);
+  }
   field("Env files", envFiles.length);
   field("Include", config.include.join(", "));
   field("Exclude", config.exclude.join(", "));
@@ -187,10 +194,27 @@ async function commandStatus(options: CliOptions): Promise<void> {
 
 async function commandSeal(options: CliOptions): Promise<void> {
   const root = await requireRoot();
+  if (!options.force && await exists(vaultPath(root))) {
+    throw new Error("Vault already exists. Use \"envkeyring reseal\" to update it, or \"envkeyring seal --force\" to replace it.");
+  }
+
+  await writeSealedVault(root, options, "seal");
+}
+
+async function commandReseal(options: CliOptions): Promise<void> {
+  const root = await requireRoot();
+  if (!await exists(vaultPath(root))) {
+    throw new Error("No vault found. Run \"envkeyring seal\" first.");
+  }
+
+  await writeSealedVault(root, options, "reseal");
+}
+
+async function writeSealedVault(root: string, options: CliOptions, action: "seal" | "reseal"): Promise<void> {
   const envFiles = await discoverEnvFiles(root, options.scope);
 
   if (envFiles.length === 0) {
-    throw new Error("No .env files found to seal.");
+    throw new Error(`No .env files found to ${action}.`);
   }
 
   const selectedEnvFiles = options.interactive ? await chooseEnvFiles(root, envFiles) : envFiles;
@@ -220,13 +244,67 @@ async function commandSeal(options: CliOptions): Promise<void> {
     sealedAt: new Date().toISOString(),
     files
   };
+  const previousMeta = await readVaultMetadata(root);
+  const nextMeta = createVaultMetadata(payload, previousMeta);
 
   await fs.writeFile(vaultPath(root), `${JSON.stringify(encryptVault(payload, passphrase), null, 2)}\n`, "utf8");
+  await fs.writeFile(vaultMetaPath(root), `${JSON.stringify(nextMeta, null, 2)}\n`, "utf8");
 
-  success(`Sealed ${files.length} env file${files.length === 1 ? "" : "s"} into ${path.relative(process.cwd(), vaultPath(root))}`);
+  success(`${action === "seal" ? "Sealed" : "Resealed"} ${files.length} env file${files.length === 1 ? "" : "s"} into ${path.relative(process.cwd(), vaultPath(root))} (revision ${nextMeta.revision})`);
   for (const file of files) {
     item(file.path);
   }
+}
+
+async function readVaultMetadata(root: string): Promise<VaultMetadata | null> {
+  const filePath = vaultMetaPath(root);
+  if (!await exists(filePath)) return null;
+  return JSON.parse(await fs.readFile(filePath, "utf8")) as VaultMetadata;
+}
+
+function createVaultMetadata(payload: VaultPayload, previous: VaultMetadata | null): VaultMetadata {
+  const files = payload.files.map((file) => ({
+    path: file.path,
+    keys: file.entries.map((entry) => entry.key).sort()
+  }));
+
+  return {
+    version: 1,
+    revision: (previous?.revision ?? 0) + 1,
+    sealedAt: payload.sealedAt,
+    sealedBy: currentActor(),
+    files,
+    changes: diffVaultFiles(previous?.files ?? [], files)
+  };
+}
+
+function currentActor(): string {
+  return process.env["USER"] || process.env["USERNAME"] || os.userInfo().username || "unknown";
+}
+
+function diffVaultFiles(previous: VaultMetaFile[], next: VaultMetaFile[]) {
+  const previousMap = new Map(previous.map((file) => [file.path, new Set(file.keys)]));
+  const nextMap = new Map(next.map((file) => [file.path, new Set(file.keys)]));
+  const addedFiles = next.filter((file) => !previousMap.has(file.path)).map((file) => file.path);
+  const removedFiles = previous.filter((file) => !nextMap.has(file.path)).map((file) => file.path);
+  const addedKeys: Record<string, string[]> = {};
+  const removedKeys: Record<string, string[]> = {};
+
+  for (const file of next) {
+    const oldKeys = previousMap.get(file.path);
+    if (!oldKeys) continue;
+    const added = file.keys.filter((key) => !oldKeys.has(key));
+    if (added.length > 0) addedKeys[file.path] = added;
+  }
+
+  for (const file of previous) {
+    const newKeys = nextMap.get(file.path);
+    if (!newKeys) continue;
+    const removed = file.keys.filter((key) => !newKeys.has(key));
+    if (removed.length > 0) removedKeys[file.path] = removed;
+  }
+
+  return { addedFiles, removedFiles, addedKeys, removedKeys };
 }
 
 async function commandUnlock(options: CliOptions): Promise<void> {
@@ -362,6 +440,7 @@ Usage:
   envkeyring config remove-exclude <pattern>
   envkeyring status [path]
   envkeyring seal [path] [--interactive]
+  envkeyring reseal [path] [--interactive]
   envkeyring unlock [path] [--force]
   envkeyring verify
   envkeyring list [path]
@@ -376,6 +455,7 @@ Commands:
   config    Show or update env discovery rules
   status    Show vault and env file state
   seal      Encrypt discovered .env files and generate .env.example files
+  reseal    Explicitly update an existing encrypted vault
   unlock    Restore .env files from the encrypted vault
   verify    Check an unlock key without writing .env files
   list      List sealed env files and variable names without showing values
