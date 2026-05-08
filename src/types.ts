@@ -33,6 +33,13 @@ export type VaultMetadata = {
   sealedBy: string;
   files: VaultMetaFile[];
   changes: VaultMetaChanges;
+  signature?: VaultSignature;
+};
+
+export type VaultSignature = {
+  algorithm: "ed25519";
+  publicKeyFingerprint: string;
+  value: string;
 };
 
 export type VaultEnvelope = {
@@ -54,4 +61,6 @@ export type EnvKeyringConfig = {
   vaultFile: string;
   include: string[];
   exclude: string[];
+  signingPublicKey?: string;
+  signingPublicKeyFingerprint?: string;
 };

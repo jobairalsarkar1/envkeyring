@@ -1,17 +1,18 @@
 #!/usr/bin/env node
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { TOOL_DIR, TOOL_NAME } from "./constants.js";
+import { ADMIN_PRIVATE_KEY_FILE, TOOL_DIR, TOOL_NAME } from "./constants.js";
 import { decryptVault, encryptVault } from "./crypto.js";
 import { runDoctor } from "./doctor.js";
 import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
 import { askSecret } from "./prompt.js";
-import { DEFAULT_EXCLUDE, DEFAULT_INCLUDE, discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultMetaPath, vaultPath, writeConfig } from "./repo.js";
+import { adminPrivateKeyPath, DEFAULT_EXCLUDE, DEFAULT_INCLUDE, discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, toolGitignorePath, vaultMetaPath, vaultPath, writeConfig } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
 import { chooseEnvFiles } from "./interactive-seal.js";
-import type { VaultEnvelope, VaultMetadata, VaultMetaFile, VaultPayload } from "./types.js";
+import type { EnvKeyringConfig, VaultEnvelope, VaultMetadata, VaultMetaFile, VaultPayload } from "./types.js";
 
 type CliOptions = {
   force: boolean;
@@ -32,6 +33,7 @@ try {
 async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "help" || cmd === "--help" || cmd === "-h") return printHelp();
   if (cmd === "init") return commandInit();
+  if (cmd === "admin") return commandAdmin(args);
   if (cmd === "config") return commandConfig(args);
   if (cmd === "status") return commandStatus(parseOptions(args));
   if (cmd === "seal") return commandSeal(parseOptions(args));
@@ -126,6 +128,62 @@ async function commandConfig(args: string[]): Promise<void> {
   throw new Error(`Unknown config action "${action}". Run "envkeyring help".`);
 }
 
+async function commandAdmin(args: string[]): Promise<void> {
+  const root = await requireRoot();
+  const [action = "status", ...rest] = args;
+
+  if (action === "status") {
+    const config = await readConfig(root);
+    heading(`${TOOL_NAME} admin`);
+    field("Signing", config.signingPublicKey ? "configured" : "not configured");
+    if (config.signingPublicKeyFingerprint) field("Public key", config.signingPublicKeyFingerprint);
+    field("Private key", await exists(adminPrivateKeyPath(root)) ? path.relative(process.cwd(), adminPrivateKeyPath(root)) : "missing");
+    return;
+  }
+
+  if (action === "init") {
+    const force = rest.includes("--force") || rest.includes("-f");
+    if (rest.some((arg) => arg !== "--force" && arg !== "-f")) throw new Error(`Unexpected argument "${rest.find((arg) => arg !== "--force" && arg !== "-f")}".`);
+    await initAdminSigning(root, force);
+    return;
+  }
+
+  throw new Error(`Unknown admin action "${action}". Run "envkeyring help".`);
+}
+
+async function initAdminSigning(root: string, force: boolean): Promise<void> {
+  const privatePath = adminPrivateKeyPath(root);
+  if (!force && await exists(privatePath)) {
+    throw new Error("Admin private signing key already exists. Use \"envkeyring admin init --force\" to replace it.");
+  }
+
+  const config = await readConfig(root);
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const publicPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+  const privatePem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const fingerprint = publicKeyFingerprint(publicPem);
+
+  await fs.writeFile(privatePath, privatePem, { encoding: "utf8", mode: 0o600 });
+  await ensureToolGitignore(root, ADMIN_PRIVATE_KEY_FILE);
+
+  config.signingPublicKey = publicPem;
+  config.signingPublicKeyFingerprint = fingerprint;
+  await writeConfig(root, config);
+
+  success(`Initialized admin signing key ${fingerprint}`);
+  warn(`${path.relative(process.cwd(), privatePath)} is required to sign future seal/reseal updates. Do not share or commit it.`);
+}
+
+async function ensureToolGitignore(root: string, entry: string): Promise<void> {
+  const gitignorePath = toolGitignorePath(root);
+  const existing = await exists(gitignorePath) ? await fs.readFile(gitignorePath, "utf8") : "";
+  const lines = existing.split(/\r?\n/).filter(Boolean);
+  if (!lines.includes(entry)) {
+    lines.push(entry);
+    await fs.writeFile(gitignorePath, `${lines.join("\n")}\n`, "utf8");
+  }
+}
+
 function printConfig(config: { include: string[]; exclude: string[] }): void {
   heading(`${TOOL_NAME} config`);
   console.log("\ninclude:");
@@ -167,6 +225,7 @@ async function commandStatus(options: CliOptions): Promise<void> {
   const vaultExists = await exists(vaultPath(root));
   const meta = vaultExists ? await readVaultMetadata(root) : null;
   const config = await readConfig(root);
+  const signatureStatus = meta ? verifyVaultMetadataSignature(meta, config) : null;
 
   heading(`${TOOL_NAME} status`);
   field("Root", path.relative(process.cwd(), root) || ".");
@@ -175,6 +234,7 @@ async function commandStatus(options: CliOptions): Promise<void> {
   if (meta) {
     field("Revision", meta.revision);
     field("Last sealed", `${meta.sealedAt} by ${meta.sealedBy}`);
+    field("Signature", signatureStatus ?? "not checked");
   }
   field("Env files", envFiles.length);
   field("Include", config.include.join(", "));
@@ -245,7 +305,8 @@ async function writeSealedVault(root: string, options: CliOptions, action: "seal
     files
   };
   const previousMeta = await readVaultMetadata(root);
-  const nextMeta = createVaultMetadata(payload, previousMeta);
+  const config = await readConfig(root);
+  const nextMeta = await createVaultMetadata(root, payload, previousMeta, config);
 
   await fs.writeFile(vaultPath(root), `${JSON.stringify(encryptVault(payload, passphrase), null, 2)}\n`, "utf8");
   await fs.writeFile(vaultMetaPath(root), `${JSON.stringify(nextMeta, null, 2)}\n`, "utf8");
@@ -262,13 +323,13 @@ async function readVaultMetadata(root: string): Promise<VaultMetadata | null> {
   return JSON.parse(await fs.readFile(filePath, "utf8")) as VaultMetadata;
 }
 
-function createVaultMetadata(payload: VaultPayload, previous: VaultMetadata | null): VaultMetadata {
+async function createVaultMetadata(root: string, payload: VaultPayload, previous: VaultMetadata | null, config: EnvKeyringConfig): Promise<VaultMetadata> {
   const files = payload.files.map((file) => ({
     path: file.path,
     keys: file.entries.map((entry) => entry.key).sort()
   }));
 
-  return {
+  const metadata: VaultMetadata = {
     version: 1,
     revision: (previous?.revision ?? 0) + 1,
     sealedAt: payload.sealedAt,
@@ -276,6 +337,64 @@ function createVaultMetadata(payload: VaultPayload, previous: VaultMetadata | nu
     files,
     changes: diffVaultFiles(previous?.files ?? [], files)
   };
+
+  if (config.signingPublicKey) {
+    metadata.signature = await signVaultMetadata(root, metadata, config);
+  }
+
+  return metadata;
+}
+
+async function signVaultMetadata(root: string, metadata: VaultMetadata, config: EnvKeyringConfig) {
+  if (!config.signingPublicKey) throw new Error("Admin signing public key is not configured.");
+  const privatePath = adminPrivateKeyPath(root);
+  if (!await exists(privatePath)) {
+    throw new Error(`Admin signing is configured, but ${ADMIN_PRIVATE_KEY_FILE} is missing. Only the admin signing key can seal or reseal this vault.`);
+  }
+
+  const privateKey = await fs.readFile(privatePath, "utf8");
+  const value = crypto.sign(null, Buffer.from(canonicalVaultMetadata(metadata)), privateKey).toString("base64");
+  return {
+    algorithm: "ed25519" as const,
+    publicKeyFingerprint: config.signingPublicKeyFingerprint ?? publicKeyFingerprint(config.signingPublicKey),
+    value
+  };
+}
+
+function verifyVaultMetadataSignature(metadata: VaultMetadata, config: EnvKeyringConfig): string {
+  if (!config.signingPublicKey) return "not configured";
+  if (!metadata.signature) return "missing";
+  if (metadata.signature.publicKeyFingerprint !== publicKeyFingerprint(config.signingPublicKey)) return "invalid public key";
+
+  const ok = crypto.verify(
+    null,
+    Buffer.from(canonicalVaultMetadata(metadata)),
+    config.signingPublicKey,
+    Buffer.from(metadata.signature.value, "base64")
+  );
+
+  return ok ? `valid (${metadata.signature.publicKeyFingerprint})` : "invalid";
+}
+
+function canonicalVaultMetadata(metadata: VaultMetadata): string {
+  const { signature: _signature, ...unsigned } = metadata;
+  return JSON.stringify(sortObject(unsigned));
+}
+
+function sortObject(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortObject);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nestedValue]) => [key, sortObject(nestedValue)])
+    );
+  }
+  return value;
+}
+
+function publicKeyFingerprint(publicKey: string): string {
+  return crypto.createHash("sha256").update(publicKey).digest("hex").slice(0, 16);
 }
 
 function currentActor(): string {
@@ -432,6 +551,8 @@ function printHelp(): void {
 
 Usage:
   envkeyring init
+  envkeyring admin [status]
+  envkeyring admin init [--force]
   envkeyring config [show]
   envkeyring config upgrade
   envkeyring config add-include <pattern>
@@ -452,6 +573,7 @@ Aliases:
 
 Commands:
   init      Create a project-local .envkeyring folder
+  admin     Configure optional admin signing for vault metadata
   config    Show or update env discovery rules
   status    Show vault and env file state
   seal      Encrypt discovered .env files and generate .env.example files

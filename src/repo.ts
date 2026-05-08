@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { CONFIG_FILE, DEFAULT_IGNORE_DIRS, TOOL_DIR, VAULT_FILE, VAULT_META_FILE } from "./constants.js";
+import { ADMIN_PRIVATE_KEY_FILE, CONFIG_FILE, DEFAULT_IGNORE_DIRS, TOOL_DIR, TOOL_GITIGNORE_FILE, VAULT_FILE, VAULT_META_FILE } from "./constants.js";
 import { toPosixPath } from "./path-utils.js";
 import type { EnvKeyringConfig } from "./types.js";
 
@@ -69,6 +69,14 @@ export function vaultMetaPath(root: string): string {
   return path.join(root, TOOL_DIR, VAULT_META_FILE);
 }
 
+export function adminPrivateKeyPath(root: string): string {
+  return path.join(root, TOOL_DIR, ADMIN_PRIVATE_KEY_FILE);
+}
+
+export function toolGitignorePath(root: string): string {
+  return path.join(root, TOOL_DIR, TOOL_GITIGNORE_FILE);
+}
+
 export async function discoverEnvFiles(root: string, scope?: string): Promise<string[]> {
   const config = await readConfig(root);
   const start = scope ? path.resolve(root, scope) : root;
@@ -92,7 +100,9 @@ export async function readConfig(root: string): Promise<EnvKeyringConfig> {
     createdAt: raw.createdAt ?? new Date(0).toISOString(),
     vaultFile: raw.vaultFile ?? VAULT_FILE,
     include: raw.include ?? DEFAULT_INCLUDE,
-    exclude: raw.exclude ?? DEFAULT_EXCLUDE
+    exclude: raw.exclude ?? DEFAULT_EXCLUDE,
+    signingPublicKey: raw.signingPublicKey,
+    signingPublicKeyFingerprint: raw.signingPublicKeyFingerprint
   };
 }
 

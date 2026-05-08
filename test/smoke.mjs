@@ -58,6 +58,11 @@ fs.writeFileSync(configPath, `${JSON.stringify(legacyConfig, null, 2)}\n`);
 const upgradeOutput = run(["config", "upgrade"]);
 assert.match(upgradeOutput.stdout, /Upgraded config with 2 include patterns and 6 exclude patterns/);
 
+const adminInit = run(["admin", "init"]);
+assert.match(adminInit.stdout, /Initialized admin signing key/);
+assert.ok(fs.existsSync(path.join(root, ".envkeyring/admin.private.pem")));
+assert.match(fs.readFileSync(path.join(root, ".envkeyring/.gitignore"), "utf8"), /admin\.private\.pem/);
+
 const configOutput = run(["config", "add-exclude", "**/.env.local"]);
 assert.match(configOutput.stdout, /Added exclude pattern \*\*\/\.env\.local/);
 
@@ -72,6 +77,7 @@ assert.ok(fs.existsSync(path.join(root, ".envkeyring/vault.enc.json")));
 assert.ok(fs.existsSync(path.join(root, ".envkeyring/vault.meta.json")));
 const firstMeta = JSON.parse(fs.readFileSync(path.join(root, ".envkeyring/vault.meta.json"), "utf8"));
 assert.equal(firstMeta.revision, 1);
+assert.equal(firstMeta.signature.algorithm, "ed25519");
 assert.deepEqual(firstMeta.changes.addedFiles, [".env.local", "apps/api/.env", "apps/web/.env"]);
 assert.equal(fs.readFileSync(path.join(root, ".env.local.example"), "utf8"), "ROOT_SECRET=<encrypted>\n");
 assert.equal(fs.readFileSync(path.join(root, "apps/web/.env.example"), "utf8"), "PUBLIC_URL=<encrypted>\nWEB_SECRET=<encrypted>\n");
@@ -90,6 +96,7 @@ assert.deepEqual(secondMeta.changes.addedKeys["apps/web/.env"], ["NEXT_PUBLIC_EX
 const afterSealStatus = run(["status"]);
 assert.match(afterSealStatus.stdout, /Vault: \.envkeyring\/vault\.enc\.json/);
 assert.match(afterSealStatus.stdout, /Revision: 2/);
+assert.match(afterSealStatus.stdout, /Signature: valid/);
 assert.match(afterSealStatus.stdout, /example ok/);
 
 fs.rmSync(path.join(root, "apps/web/.env"));

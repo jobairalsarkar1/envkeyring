@@ -40,6 +40,14 @@ Initialize `envkeyring`:
 npx envkeyring init
 ```
 
+Optionally initialize admin signing before the first seal:
+
+```bash
+npx envkeyring admin init
+```
+
+This stores a public signing key in `.envkeyring/config.json` and a private signing key at `.envkeyring/admin.private.pem`. The private key is ignored by `.envkeyring/.gitignore`; keep it private and backed up.
+
 Check what will be managed:
 
 ```bash
@@ -85,6 +93,8 @@ npx envkeyring reseal
 ```
 
 Each seal/reseal updates `.envkeyring/vault.meta.json` with a revision number, timestamp, local actor name, sealed file paths, variable names, and key-level additions/removals.
+
+If admin signing is configured, seal/reseal also signs the public metadata. `status` reports whether that signature is valid.
 
 ## Teammate Workflow
 
@@ -177,6 +187,18 @@ npx envkeyring init
 Creates the project-local `.envkeyring/` folder.
 
 ```bash
+npx envkeyring admin [status]
+```
+
+Shows whether admin signing is configured and whether the local private signing key is present.
+
+```bash
+npx envkeyring admin init
+```
+
+Generates an Ed25519 signing keypair, stores the public key in config, writes the private key to `.envkeyring/admin.private.pem`, and ignores that private key with `.envkeyring/.gitignore`.
+
+```bash
 npx envkeyring config [show]
 ```
 
@@ -266,14 +288,25 @@ Commit:
 
 ```txt
 .envkeyring/config.json
+.envkeyring/.gitignore
 .envkeyring/vault.enc.json
 .envkeyring/vault.meta.json
 *.env.example
 ```
 
+Do not commit:
+
+```txt
+.envkeyring/admin.private.pem
+```
+
 ## Security Model
 
 The encrypted vault is safe to commit only while the unlock key stays private. Anyone with both the repository and the unlock key can recover the original `.env` values.
+
+Admin signing makes unauthorized vault updates visible, not impossible. If signing is configured, the CLI requires `.envkeyring/admin.private.pem` to seal or reseal and signs `vault.meta.json`. Other users can see whether metadata was signed by the configured public key.
+
+For real enforcement, combine admin signing with GitHub branch protection and CODEOWNERS for `.envkeyring/**` and `*.env.example`.
 
 This version uses Node's built-in `crypto` module with `scrypt` key derivation and `AES-256-GCM` authenticated encryption.
 
