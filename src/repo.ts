@@ -4,8 +4,8 @@ import { CONFIG_FILE, DEFAULT_IGNORE_DIRS, TOOL_DIR, VAULT_FILE } from "./consta
 import { toPosixPath } from "./path-utils.js";
 import type { EnvKeyringConfig } from "./types.js";
 
-const DEFAULT_INCLUDE = [".env", ".env.*", "**/.env", "**/.env.*"];
-const DEFAULT_EXCLUDE = [
+export const DEFAULT_INCLUDE = [".env", ".env.*", "**/.env", "**/.env.*"];
+export const DEFAULT_EXCLUDE = [
   ".env.example",
   ".env.*.example",
   ".env.sample",

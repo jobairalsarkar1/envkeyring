@@ -153,6 +153,7 @@ You can inspect and edit rules with:
 
 ```bash
 npx envkeyring config
+npx envkeyring config upgrade
 npx envkeyring config add-include "apps/**/.env.production"
 npx envkeyring config remove-exclude "**/.env.test"
 ```
@@ -170,6 +171,12 @@ npx envkeyring config [show]
 ```
 
 Shows active include and exclude discovery rules.
+
+```bash
+npx envkeyring config upgrade
+```
+
+Adds any missing default discovery patterns to an existing config while preserving custom rules.
 
 ```bash
 npx envkeyring config add-include <pattern>

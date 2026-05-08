@@ -42,6 +42,22 @@ fs.writeFileSync(path.join(root, "apps/api/server.ts"), "console.log(process.env
 fs.writeFileSync(path.join(root, ".env.local"), "ROOT_SECRET=root-value\n");
 
 run(["init"]);
+const configPath = path.join(root, ".envkeyring/config.json");
+const legacyConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+legacyConfig.include = ["**/.env", "**/.env.*"];
+legacyConfig.exclude = [
+  "**/.env.example",
+  "**/.env.*.example",
+  "**/.env.sample",
+  "**/.env.*.sample",
+  "**/.env.template",
+  "**/.env.*.template"
+];
+fs.writeFileSync(configPath, `${JSON.stringify(legacyConfig, null, 2)}\n`);
+
+const upgradeOutput = run(["config", "upgrade"]);
+assert.match(upgradeOutput.stdout, /Upgraded config with 2 include patterns and 6 exclude patterns/);
+
 const configOutput = run(["config", "add-exclude", "**/.env.local"]);
 assert.match(configOutput.stdout, /Added exclude pattern \*\*\/\.env\.local/);
 

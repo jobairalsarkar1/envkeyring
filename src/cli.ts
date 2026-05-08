@@ -6,7 +6,7 @@ import { decryptVault, encryptVault } from "./crypto.js";
 import { runDoctor } from "./doctor.js";
 import { examplePathFor, readEnvFile, writeEnvFile, writeExampleFile } from "./env-file.js";
 import { askSecret } from "./prompt.js";
-import { discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultPath, writeConfig } from "./repo.js";
+import { DEFAULT_EXCLUDE, DEFAULT_INCLUDE, discoverEnvFiles, exists, findRepoRoot, inferInitRoot, initRepo, readConfig, vaultPath, writeConfig } from "./repo.js";
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
 import { chooseEnvFiles } from "./interactive-seal.js";
@@ -83,6 +83,14 @@ async function commandConfig(args: string[]): Promise<void> {
     return;
   }
 
+  if (action === "upgrade") {
+    const addedIncludes = addPatterns(config.include, DEFAULT_INCLUDE);
+    const addedExcludes = addPatterns(config.exclude, DEFAULT_EXCLUDE);
+    await writeConfig(root, config);
+    success(`Upgraded config with ${addedIncludes} include pattern${addedIncludes === 1 ? "" : "s"} and ${addedExcludes} exclude pattern${addedExcludes === 1 ? "" : "s"}.`);
+    return;
+  }
+
   if (!pattern) throw new Error(`Missing pattern for "config ${action}".`);
 
   if (action === "add-include") {
@@ -126,6 +134,17 @@ function printConfig(config: { include: string[]; exclude: string[] }): void {
 
 function addPattern(patterns: string[], pattern: string): void {
   if (!patterns.includes(pattern)) patterns.push(pattern);
+}
+
+function addPatterns(patterns: string[], defaults: string[]): number {
+  let added = 0;
+  for (const pattern of defaults) {
+    if (!patterns.includes(pattern)) {
+      patterns.push(pattern);
+      added += 1;
+    }
+  }
+  return added;
 }
 
 function removePattern(patterns: string[], pattern: string): void {
@@ -336,6 +355,7 @@ function printHelp(): void {
 Usage:
   envkeyring init
   envkeyring config [show]
+  envkeyring config upgrade
   envkeyring config add-include <pattern>
   envkeyring config add-exclude <pattern>
   envkeyring config remove-include <pattern>
