@@ -14,6 +14,14 @@ Teams often commit `.env.example`, but the real values still have to be copied m
 
 ## Install
 
+Recommended for one-off use:
+
+```bash
+npx --yes envkeyring@latest help
+```
+
+Recommended for a project:
+
 ```bash
 npm install -D envkeyring
 ```
@@ -24,6 +32,8 @@ You can run the CLI with either command:
 npx envkeyring help
 npx ekr help
 ```
+
+Global installation is optional. On Linux, `npm install -g envkeyring` may fail with `EACCES` if npm's global directory is owned by root. Prefer `npx`, a project-local dev dependency, or a user-owned Node install through tools like `nvm` or `fnm` instead of using `sudo`.
 
 ## Admin Workflow
 
