@@ -235,6 +235,12 @@ npx envkeyring gitignore fix
 Checks whether project `.gitignore` rules accidentally ignore `.envkeyring/`. The fix command appends the allow-list needed to commit vault files while keeping real env files and the admin private signing key ignored.
 
 ```bash
+npx envkeyring version
+```
+
+Shows the installed `envkeyring` version.
+
+```bash
 npx envkeyring config add-include <pattern>
 npx envkeyring config add-exclude <pattern>
 npx envkeyring config remove-include <pattern>
@@ -341,6 +347,16 @@ Admin signing makes unauthorized vault updates visible, not impossible. If signi
 For real enforcement, combine admin signing with GitHub branch protection and CODEOWNERS for `.envkeyring/**` and `*.env.example`.
 
 This version uses Node's built-in `crypto` module with `scrypt` key derivation and `AES-256-GCM` authenticated encryption.
+
+## Update Checks
+
+`envkeyring` can show a friendly notice when a newer npm version is available. The check is best-effort, cached for 24 hours in the user's cache directory, skipped in CI/non-interactive output, and never blocks the command if the registry is unavailable.
+
+Disable it with:
+
+```bash
+ENVKEYRING_NO_UPDATE_CHECK=1 npx envkeyring status
+```
 
 ## Development
 

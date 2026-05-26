@@ -35,12 +35,16 @@ function runFail(args, input = "") {
 
 fs.mkdirSync(path.join(root, "apps/web"), { recursive: true });
 fs.mkdirSync(path.join(root, "apps/api"), { recursive: true });
+fs.mkdirSync(path.join(root, ".git"));
 fs.writeFileSync(path.join(root, "apps/web/.env"), "PUBLIC_URL=http://localhost:3000\nWEB_SECRET=web-value\n");
 fs.writeFileSync(path.join(root, "apps/web/.env.local"), "LOCAL_ONLY=do-not-seal\n");
 fs.writeFileSync(path.join(root, "apps/api/.env"), "DATABASE_URL=postgres://local\nJWT_SECRET=jwt-value\n");
 fs.writeFileSync(path.join(root, "apps/api/server.ts"), "console.log(process.env.DATABASE_URL, process.env.MISSING_FROM_EXAMPLE);\n");
 fs.writeFileSync(path.join(root, ".env.local"), "ROOT_SECRET=root-value\n");
 fs.writeFileSync(path.join(root, ".gitignore"), ".env*\nnode_modules\n");
+
+const versionOutput = run(["version"]);
+assert.match(versionOutput.stdout, /envkeyring \d+\.\d+\.\d+/);
 
 const initOutput = run(["init"]);
 assert.match(initOutput.stdout, /\.envkeyring\/ may not be commit-ready/);

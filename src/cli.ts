@@ -12,6 +12,7 @@ import { adminPrivateKeyPath, checkProjectGitignore, DEFAULT_EXCLUDE, DEFAULT_IN
 import { fromPosixPath, toPosixPath } from "./path-utils.js";
 import { empty, field, heading, item, success, warn } from "./output.js";
 import { chooseEnvFiles } from "./interactive-seal.js";
+import { maybeNotifyUpdate, printCurrentVersion } from "./update-notifier.js";
 import type { EnvKeyringConfig, VaultEnvelope, VaultMetadata, VaultMetaFile, VaultPayload } from "./types.js";
 
 type CliOptions = {
@@ -24,6 +25,7 @@ const [, , command = "help", ...args] = process.argv;
 
 try {
   await main(command, args);
+  await maybeNotifyUpdate();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[error] ${TOOL_NAME}: ${message}`);
@@ -32,6 +34,7 @@ try {
 
 async function main(cmd: string, args: string[]): Promise<void> {
   if (cmd === "help" || cmd === "--help" || cmd === "-h") return printHelp();
+  if (cmd === "version" || cmd === "--version" || cmd === "-v") return printCurrentVersion();
   if (cmd === "init") return commandInit();
   if (cmd === "admin") return commandAdmin(args);
   if (cmd === "config") return commandConfig(args);
@@ -629,6 +632,7 @@ Usage:
   envkeyring list [path]
   envkeyring rotate-key
   envkeyring doctor [path]
+  envkeyring version
 
 Aliases:
   ekr
@@ -647,5 +651,6 @@ Commands:
   rotate-key
             Re-encrypt the vault with a new unlock key
   doctor    Compare env usage in code with checked-in examples
+  version   Show the installed envkeyring version
 `);
 }
